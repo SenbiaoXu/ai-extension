@@ -1,0 +1,16 @@
+{
+  "name": "harmonyos-ai-extension",
+  "version": "1.0.0",
+  "description": "浏览器扩展插件 - 连接鸿蒙端侧模型",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0"
+  }
+}

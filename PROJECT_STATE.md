@@ -1,0 +1,76 @@
+# 项目演进状态
+
+## 演进时间轴
+
+| 日期 | 里程碑 | 说明 |
+|------|--------|------|
+| 2026-03-06 | 项目初始化 | 创建浏览器扩展插件项目结构 |
+| 2026-03-06 | 核心功能开发 | 实现侧边栏对话助手、OpenAI API兼容、流式响应 |
+| 2026-03-06 | 构建配置完成 | Vite构建配置完成，TypeScript类型检查通过 |
+
+## 当前架构蓝图
+
+```
+ai-extension/
+├── extension/           # 浏览器扩展插件
+│   ├── src/
+│   │   ├── background/  # Service Worker (Manifest V3)
+│   │   ├── sidebar/     # 侧边栏UI (HTML/CSS/TS)
+│   │   ├── options/     # 设置页面
+│   │   ├── services/    # API客户端 & 存储服务
+│   │   └── types/       # TypeScript类型定义
+│   ├── public/icons/    # 扩展图标
+│   └── dist/            # 构建输出目录
+└── node-server/         # Node服务端(待开发)
+```
+
+### 技术栈
+- **前端**: TypeScript + Vite
+- **扩展API**: Chrome Extension Manifest V3
+- **UI**: 原生HTML/CSS/JavaScript
+- **API**: OpenAI Chat Completions 兼容格式
+
+### 数据流
+```
+用户输入 → Sidebar UI → Background Service Worker → HarmonyOS API → 流式响应 → UI渲染
+```
+
+## 决策存证 (ADR)
+
+### ADR-001: 选择 Manifest V3
+- **背景**: Chrome 正在逐步淘汰 Manifest V2
+- **决策**: 使用最新的 Manifest V3 API
+- **影响**: 需要使用 Service Worker 替代 Background Page
+
+### ADR-002: 使用 Vite 构建
+- **背景**: 需要TypeScript编译和模块打包
+- **决策**: 使用 Vite 作为构建工具
+- **原因**: 快速的冷启动、原生ES模块支持、简洁的配置
+
+### ADR-003: 原生UI实现
+- **背景**: 需要轻量级的UI实现
+- **决策**: 使用原生HTML/CSS/JavaScript，不引入框架
+- **原因**: 减小扩展体积、简化构建流程、提高加载速度
+
+## 交付物清单
+
+| 组件 | 状态 | 路径 |
+|------|------|------|
+| 侧边栏UI | ✅ 完成 | extension/src/sidebar/ |
+| 设置页面 | ✅ 完成 | extension/src/options/ |
+| 后台服务 | ✅ 完成 | extension/src/background/ |
+| API客户端 | ✅ 完成 | extension/src/services/api.ts |
+| 类型定义 | ✅ 完成 | extension/src/types/ |
+| 构建配置 | ✅ 完成 | extension/vite.config.ts |
+
+## 待办与风险
+
+### 待办事项
+- [ ] 添加对话历史管理功能
+- [ ] 实现多会话支持
+- [ ] 添加错误重试机制
+- [ ] 支持Markdown渲染
+
+### 已知风险
+- 鸿蒙端侧模型API端点需要用户自行部署
+- SVG图标在某些Chrome版本可能不兼容，需要PNG备选
