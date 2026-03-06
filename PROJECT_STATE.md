@@ -7,6 +7,7 @@
 | 2026-03-06 | 项目初始化 | 创建浏览器扩展插件项目结构 |
 | 2026-03-06 | 核心功能开发 | 实现侧边栏对话助手、OpenAI API兼容、流式响应 |
 | 2026-03-06 | 构建配置完成 | Vite构建配置完成，TypeScript类型检查通过 |
+| 2026-03-06 | WebSocket中转站 | 实现浏览器扩展作为中转站，支持WebSocket双向通信 |
 
 ## 当前架构蓝图
 
@@ -14,14 +15,17 @@
 ai-extension/
 ├── extension/           # 浏览器扩展插件
 │   ├── src/
-│   │   ├── background/  # Service Worker (Manifest V3)
+│   │   ├── background/  # Service Worker (Manifest V3) + WebSocket客户端
 │   │   ├── sidebar/     # 侧边栏UI (HTML/CSS/TS)
 │   │   ├── options/     # 设置页面
-│   │   ├── services/    # API客户端 & 存储服务
+│   │   ├── services/    # API客户端、存储服务、WebSocket服务
 │   │   └── types/       # TypeScript类型定义
 │   ├── public/icons/    # 扩展图标
 │   └── dist/            # 构建输出目录
-└── node-server/         # Node服务端(待开发)
+└── node-server/         # WebSocket中转服务器
+    └── src/
+        ├── index.ts     # 服务器入口
+        └── types.ts     # 消息类型定义
 ```
 
 ### 技术栈
@@ -29,10 +33,13 @@ ai-extension/
 - **扩展API**: Chrome Extension Manifest V3
 - **UI**: 原生HTML/CSS/JavaScript
 - **API**: OpenAI Chat Completions 兼容格式
+- **通信**: WebSocket (ws库)
 
 ### 数据流
 ```
-用户输入 → Sidebar UI → Background Service Worker → HarmonyOS API → 流式响应 → UI渲染
+外部客户端 → WebSocket服务器 → 浏览器扩展 → 鸿蒙AI模型
+                ↑                              ↓
+              结果输出 ←──────────────────── 推理结果
 ```
 
 ## 决策存证 (ADR)
@@ -52,6 +59,14 @@ ai-extension/
 - **决策**: 使用原生HTML/CSS/JavaScript，不引入框架
 - **原因**: 减小扩展体积、简化构建流程、提高加载速度
 
+### ADR-004: WebSocket中转架构
+- **背景**: 需要外部程序调用浏览器扩展中的AI能力
+- **决策**: 浏览器扩展作为WebSocket客户端，连接本地服务器
+- **原因**: 
+  - 浏览器扩展无法作为服务器监听端口
+  - 本地服务器可以作为中转站，接受外部连接
+  - 扩展主动连接服务器，避免网络配置问题
+
 ## 交付物清单
 
 | 组件 | 状态 | 路径 |
@@ -60,8 +75,10 @@ ai-extension/
 | 设置页面 | ✅ 完成 | extension/src/options/ |
 | 后台服务 | ✅ 完成 | extension/src/background/ |
 | API客户端 | ✅ 完成 | extension/src/services/api.ts |
+| WebSocket客户端 | ✅ 完成 | extension/src/services/websocket.ts |
 | 类型定义 | ✅ 完成 | extension/src/types/ |
 | 构建配置 | ✅ 完成 | extension/vite.config.ts |
+| WebSocket服务器 | ✅ 完成 | node-server/src/ |
 
 ## 待办与风险
 
@@ -70,7 +87,9 @@ ai-extension/
 - [ ] 实现多会话支持
 - [ ] 添加错误重试机制
 - [ ] 支持Markdown渲染
+- [ ] WebSocket连接状态UI显示
 
 ### 已知风险
 - 鸿蒙端侧模型API端点需要用户自行部署
 - SVG图标在某些Chrome版本可能不兼容，需要PNG备选
+- WebSocket连接需要本地服务器先启动

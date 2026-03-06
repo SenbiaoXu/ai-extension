@@ -20,6 +20,16 @@
    - 使用 `chrome.runtime.sendMessage()` 和 `chrome.runtime.onMessage` 进行组件间通信
    - Service Worker 中可以使用 `chrome.runtime.sendMessage()` 向其他组件发送消息
 
+### WebSocket 在 Service Worker 中
+
+1. **WebSocket 支持**
+   - Service Worker 支持 WebSocket API
+   - 可以在后台保持长连接
+
+2. **连接管理**
+   - 需要处理断线重连逻辑
+   - 消息队列用于连接断开时缓存消息
+
 ### Vite 构建浏览器扩展
 
 1. **路径配置**
@@ -53,20 +63,25 @@ const btn = document.getElementById('btn') as HTMLButtonElement;
 - 使用相对路径: `import { foo } from '../services/api'`
 - 或配置别名: `import { foo } from '@/services/api'`
 
-## API 设计
+## WebSocket 中转架构
 
-### OpenAI 兼容格式
+### 设计模式
 
-流式响应使用 Server-Sent Events (SSE) 格式：
+浏览器扩展无法作为服务器监听端口，因此采用反向连接模式：
+1. 本地 Node.js 服务器监听 WebSocket 端口
+2. 浏览器扩展启动后主动连接服务器
+3. 外部客户端通过服务器转发消息给扩展
+
+### 消息格式
+
+统一使用 JSON 格式：
+```json
+{
+  "type": "chat | chat-response | stream-chunk | stream-end | error",
+  "payload": { ... },
+  "id": "optional-message-id"
+}
 ```
-data: {"id":"xxx","choices":[{"delta":{"content":"Hello"}}]}
-data: [DONE]
-```
-
-解析时需要注意：
-- 每行以 `data: ` 开头
-- `[DONE]` 表示流结束
-- 使用 `TextDecoder` 处理二进制流
 
 ## 常见问题解决
 
@@ -84,3 +99,9 @@ content = content.replace(/\.\.\/\.\.\/js\//g, '../js/');
 **问题**: Service Worker 无法直接与侧边栏通信
 
 **解决**: 使用 `chrome.runtime.sendMessage()` 广播消息，所有监听器都会收到
+
+### WebSocket 连接时机
+
+**问题**: 扩展启动时服务器可能未就绪
+
+**解决**: 实现自动重连机制，消息队列缓存未发送的消息
