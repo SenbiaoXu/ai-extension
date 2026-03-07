@@ -51,16 +51,15 @@ function handleMessage(data: RawData, clientId: string) {
         break;
 
       case 'chat-response':
-        console.log('✅ 收到聊天响应:', (message.payload as { content: string })?.content);
-        console.log('');
+        process.stdout.write('✅ 收到聊天响应: ');
+        process.stdout.write((message.payload as { content: string })?.content || '');
+        process.stdout.write('\n\n');
         break;
 
       case 'stream-chunk':
-        process.stdout.write((message.payload as { content: string })?.content || '');
         break;
 
       case 'stream-end':
-        console.log('\n🏁 流式响应结束\n');
         break;
 
       case 'stream-error':
