@@ -1,3 +1,5 @@
+import type { Message, Tool, ToolCall } from '../types';
+
 export interface WSMessage {
   type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error';
   payload?: unknown;
@@ -5,16 +7,34 @@ export interface WSMessage {
 }
 
 export interface WSChatPayload {
-  messages: Array<{
-    role: 'system' | 'user' | 'assistant';
-    content: string;
-  }>;
+  messages: Message[];
   config?: {
     endpoint?: string;
     model?: string;
     temperature?: number;
     maxTokens?: number;
   };
+  tools?: Tool[];
+  tool_choice?: 'none' | 'auto' | 'required' | { type: 'function'; function: { name: string } };
+  stream?: boolean;
+}
+
+export interface WSChatResponsePayload {
+  content: string | null;
+  tool_calls?: ToolCall[];
+}
+
+export interface WSStreamChunkPayload {
+  content: string;
+  tool_calls?: Array<{
+    index: number;
+    id?: string;
+    type?: 'function';
+    function?: {
+      name?: string;
+      arguments?: string;
+    };
+  }>;
 }
 
 export class WebSocketClient {

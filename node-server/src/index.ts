@@ -1,7 +1,19 @@
+import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { WebSocketServer, WebSocket, RawData } from 'ws';
-import type { WebSocketMessage, ChatPayload } from './types.js';
+import type {
+  WebSocketMessage,
+  ChatPayload,
+  OpenAIChatCompletionRequest,
+  OpenAIChatCompletionResponse,
+  OpenAIStreamResponse,
+  OpenAIModelsResponse,
+  ChatResponsePayload,
+  StreamChunkPayload,
+  ToolCall,
+} from './types.js';
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8765;
+const HTTP_PORT = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : 3000;
+const WS_PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT, 10) : 8765;
 
 interface ConnectedClient {
   ws: WebSocket;
@@ -9,14 +21,40 @@ interface ConnectedClient {
   connectedAt: Date;
 }
 
-const clients: Map<string, ConnectedClient> = new Map();
+interface PendingRequest {
+  resolve: (value: OpenAIChatCompletionResponse) => void;
+  reject: (reason: unknown) => void;
+  stream: boolean;
+  res?: ServerResponse;
+  chunks: Array<{ content: string | null; tool_calls?: Array<{ index: number; id?: string; type?: 'function'; function?: { name?: string; arguments?: string } }> }>;
+  model: string;
+  startTime: number;
+}
 
-const wss = new WebSocketServer({ port: PORT });
+const clients: Map<string, ConnectedClient> = new Map();
+const pendingRequests: Map<string, PendingRequest> = new Map();
+
+const wss = new WebSocketServer({ port: WS_PORT });
 
 let isStreamingOutput = false;
 
 function generateClientId(): string {
   return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function generateRequestId(): string {
+  return `chatcmpl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function getFirstClient(): ConnectedClient | undefined {
+  return clients.values().next().value;
+}
+
+function sendToClient(clientId: string, message: WebSocketMessage) {
+  const client = clients.get(clientId);
+  if (client && client.ws.readyState === WebSocket.OPEN) {
+    client.ws.send(JSON.stringify(message));
+  }
 }
 
 function broadcastToAll(message: WebSocketMessage, excludeId?: string) {
@@ -28,14 +66,7 @@ function broadcastToAll(message: WebSocketMessage, excludeId?: string) {
   });
 }
 
-function sendToClient(clientId: string, message: WebSocketMessage) {
-  const client = clients.get(clientId);
-  if (client && client.ws.readyState === WebSocket.OPEN) {
-    client.ws.send(JSON.stringify(message));
-  }
-}
-
-function handleMessage(data: RawData, clientId: string) {
+function handleWSMessage(data: RawData, clientId: string) {
   try {
     const message: WebSocketMessage = JSON.parse(data.toString());
 
@@ -44,33 +75,131 @@ function handleMessage(data: RawData, clientId: string) {
         sendToClient(clientId, { type: 'pong' });
         break;
 
+      case 'chat-response': {
+        const payload = message.payload as ChatResponsePayload;
+        const pending = pendingRequests.get(message.id || '');
+        
+        if (pending) {
+          if (pending.stream && pending.res) {
+            const streamResponse: OpenAIStreamResponse = {
+              id: message.id || '',
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: pending.model,
+              choices: [{
+                index: 0,
+                delta: { content: payload.content },
+                finish_reason: 'stop',
+              }],
+            };
+            pending.res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
+            pending.res.write('data: [DONE]\n\n');
+            pending.res.end();
+          } else {
+            const response: OpenAIChatCompletionResponse = {
+              id: message.id || '',
+              object: 'chat.completion',
+              created: Math.floor(Date.now() / 1000),
+              model: pending.model,
+              choices: [{
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: payload.content,
+                  tool_calls: payload.tool_calls,
+                },
+                finish_reason: payload.tool_calls ? 'tool_calls' : 'stop',
+              }],
+            };
+            pending.resolve(response);
+          }
+          pendingRequests.delete(message.id || '');
+        } else {
+          if (!isStreamingOutput) {
+            console.log(payload.content || '');
+            console.log('\n');
+          }
+        }
+        break;
+      }
+
+      case 'stream-chunk': {
+        const payload = message.payload as StreamChunkPayload;
+        const pending = pendingRequests.get(message.id || '');
+        
+        if (pending && pending.stream && pending.res) {
+          const streamResponse: OpenAIStreamResponse = {
+            id: message.id || '',
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: pending.model,
+            choices: [{
+              index: 0,
+              delta: {
+                content: payload.content,
+                tool_calls: payload.tool_calls,
+              },
+              finish_reason: null,
+            }],
+          };
+          pending.res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
+          pending.chunks.push({ content: payload.content, tool_calls: payload.tool_calls });
+        } else {
+          isStreamingOutput = true;
+          process.stdout.write(payload.content || '');
+        }
+        break;
+      }
+
+      case 'stream-end': {
+        const pending = pendingRequests.get(message.id || '');
+        
+        if (pending && pending.stream && pending.res) {
+          const streamResponse: OpenAIStreamResponse = {
+            id: message.id || '',
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: pending.model,
+            choices: [{
+              index: 0,
+              delta: {},
+              finish_reason: 'stop',
+            }],
+          };
+          pending.res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
+          pending.res.write('data: [DONE]\n\n');
+          pending.res.end();
+          pendingRequests.delete(message.id || '');
+        } else {
+          isStreamingOutput = false;
+          process.stdout.write('\n\n');
+        }
+        break;
+      }
+
+      case 'stream-error': {
+        const payload = message.payload as { message: string };
+        const pending = pendingRequests.get(message.id || '');
+        
+        if (pending) {
+          if (pending.stream && pending.res) {
+            pending.res.writeHead(500, { 'Content-Type': 'application/json' });
+            pending.res.end(JSON.stringify({ error: { message: payload.message, type: 'internal_error' } }));
+          } else {
+            pending.reject(new Error(payload.message));
+          }
+          pendingRequests.delete(message.id || '');
+        } else {
+          console.error('❌ 流式响应错误:', payload.message);
+        }
+        break;
+      }
+
       case 'chat':
         console.log(`[${new Date().toISOString()}] 收到消息 [${clientId}]:`, message.type);
         console.log('📝 聊天请求:', JSON.stringify((message.payload as ChatPayload)?.messages, null, 2));
         console.log('⏳ 等待浏览器扩展处理并返回结果...\n');
         broadcastToAll(message, clientId);
-        break;
-
-      case 'chat-response':
-        if (!isStreamingOutput) {
-          const content = (message.payload as { content: string })?.content || '';
-          console.log(content);
-          console.log('\n');
-        }
-        break;
-
-      case 'stream-chunk':
-        isStreamingOutput = true;
-        process.stdout.write((message.payload as { content: string })?.content || '');
-        break;
-
-      case 'stream-end':
-        isStreamingOutput = false;
-        process.stdout.write('\n\n');
-        break;
-
-      case 'stream-error':
-        console.error('❌ 流式响应错误:', (message.payload as { message: string })?.message);
         break;
 
       default:
@@ -97,7 +226,7 @@ wss.on('connection', (ws) => {
     payload: { id: clientId },
   }));
 
-  ws.on('message', (data) => handleMessage(data, clientId));
+  ws.on('message', (data) => handleWSMessage(data, clientId));
 
   ws.on('close', () => {
     clients.delete(clientId);
@@ -115,31 +244,203 @@ wss.on('error', (error) => {
   console.error('❌ WebSocket服务器错误:', error);
 });
 
-console.log('╔════════════════════════════════════════════╗');
-console.log('║     鸿蒙AI助手 - WebSocket中转服务器       ║');
-console.log('╠════════════════════════════════════════════╣');
-console.log(`║  端口: ${PORT.toString().padEnd(34)}║`);
-console.log('║  等待浏览器扩展连接...                      ║');
-console.log('╚════════════════════════════════════════════╝');
-console.log('');
+async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const url = req.url || '/';
+  const method = req.method || 'GET';
 
-process.stdin.on('data', (data) => {
-  const input = data.toString().trim();
-  if (input) {
-    console.log('\n📤 发送测试消息到所有客户端...');
-    broadcastToAll({
-      type: 'chat',
-      payload: {
-        messages: [{ role: 'user', content: input }],
-      },
-    });
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
   }
+
+  if (url === '/v1/models' && method === 'GET') {
+    const modelsResponse: OpenAIModelsResponse = {
+      object: 'list',
+      data: [{
+        id: 'harmonyos-default',
+        object: 'model',
+        created: Math.floor(Date.now() / 1000),
+        owned_by: 'harmonyos',
+      }],
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(modelsResponse));
+    return;
+  }
+
+  if (url === '/v1/chat/completions' && method === 'POST') {
+    const client = getFirstClient();
+    
+    if (!client) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: {
+          message: 'No browser extension connected. Please ensure the extension is running and connected.',
+          type: 'service_unavailable',
+        },
+      }));
+      return;
+    }
+
+    let body = '';
+    for await (const chunk of req) {
+      body += chunk.toString();
+    }
+
+    let openaiRequest: OpenAIChatCompletionRequest;
+    try {
+      openaiRequest = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: {
+          message: 'Invalid JSON body',
+          type: 'invalid_request_error',
+        },
+      }));
+      return;
+    }
+
+    const requestId = generateRequestId();
+    const { stream = false, tools, tool_choice } = openaiRequest;
+
+    const wsPayload: ChatPayload = {
+      messages: openaiRequest.messages,
+      config: {
+        model: openaiRequest.model,
+        temperature: openaiRequest.temperature,
+        maxTokens: openaiRequest.max_tokens,
+      },
+      tools,
+      tool_choice,
+      stream,
+    };
+
+    console.log(`\n📥 [${new Date().toISOString()}] 收到OpenAI请求`);
+    console.log(`   请求ID: ${requestId}`);
+    console.log(`   模型: ${openaiRequest.model}`);
+    console.log(`   流式: ${stream}`);
+    console.log(`   消息数: ${openaiRequest.messages.length}`);
+    if (tools) {
+      console.log(`   工具数: ${tools.length}`);
+    }
+
+    if (stream) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      pendingRequests.set(requestId, {
+        resolve: () => {},
+        reject: () => {},
+        stream: true,
+        res,
+        chunks: [],
+        model: openaiRequest.model,
+        startTime: Date.now(),
+      });
+
+      sendToClient(client.id, {
+        type: 'chat',
+        id: requestId,
+        payload: wsPayload,
+      });
+
+      req.on('close', () => {
+        pendingRequests.delete(requestId);
+      });
+    } else {
+      const timeout = setTimeout(() => {
+        pendingRequests.delete(requestId);
+        res.writeHead(504, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: {
+            message: 'Request timeout',
+            type: 'timeout_error',
+          },
+        }));
+      }, 120000);
+
+      new Promise<OpenAIChatCompletionResponse>((resolve, reject) => {
+        pendingRequests.set(requestId, {
+          resolve,
+          reject,
+          stream: false,
+          chunks: [],
+          model: openaiRequest.model,
+          startTime: Date.now(),
+        });
+
+        sendToClient(client.id, {
+          type: 'chat',
+          id: requestId,
+          payload: wsPayload,
+        });
+      })
+        .then((response) => {
+          clearTimeout(timeout);
+          pendingRequests.delete(requestId);
+          console.log(`\n📤 [${new Date().toISOString()}] 响应已发送`);
+          console.log(`   请求ID: ${requestId}`);
+          console.log(`   耗时: ${Date.now() - (pendingRequests.get(requestId)?.startTime || Date.now())}ms`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(response));
+        })
+        .catch((error) => {
+          clearTimeout(timeout);
+          pendingRequests.delete(requestId);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: {
+              message: error instanceof Error ? error.message : 'Unknown error',
+              type: 'internal_error',
+            },
+          }));
+        });
+    }
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    error: {
+      message: `Not found: ${url}`,
+      type: 'not_found',
+    },
+  }));
+}
+
+const httpServer = createServer(handleOpenAIRequest);
+
+httpServer.listen(HTTP_PORT, () => {
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║        鸿蒙AI助手 - 大模型接口中转站                      ║');
+  console.log('╠══════════════════════════════════════════════════════════╣');
+  console.log(`║  HTTP API端口: http://localhost:${HTTP_PORT.toString().padEnd(26)}║`);
+  console.log(`║  WebSocket端口: ${WS_PORT.toString().padEnd(31)}║`);
+  console.log('╠══════════════════════════════════════════════════════════╣');
+  console.log('║  OpenAI兼容接口:                                          ║');
+  console.log(`║    POST http://localhost:${HTTP_PORT}/v1/chat/completions    ║`);
+  console.log(`║    GET  http://localhost:${HTTP_PORT}/v1/models               ║`);
+  console.log('╠══════════════════════════════════════════════════════════╣');
+  console.log('║  等待浏览器扩展连接...                                    ║');
+  console.log('╚══════════════════════════════════════════════════════════╝');
+  console.log('');
 });
 
 process.on('SIGINT', () => {
   console.log('\n\n👋 正在关闭服务器...');
   wss.close(() => {
-    console.log('✅ 服务器已关闭');
-    process.exit(0);
+    httpServer.close(() => {
+      console.log('✅ 服务器已关闭');
+      process.exit(0);
+    });
   });
 });

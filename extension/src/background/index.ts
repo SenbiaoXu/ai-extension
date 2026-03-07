@@ -1,7 +1,7 @@
-import type { ApiConfig, Message } from '../types';
+import type { ApiConfig, Message, Tool, ToolCall } from '../types';
 import { HarmonyOSApiClient } from '../services/api';
 import { DEFAULT_CONFIG } from '../types';
-import { getWebSocketClient, type WSMessage } from '../services/websocket';
+import { getWebSocketClient, type WSMessage, type WSChatPayload, type WSChatResponsePayload, type WSStreamChunkPayload } from '../services/websocket';
 
 let apiClient: HarmonyOSApiClient | null = null;
 let wsConnected = false;
@@ -38,8 +38,15 @@ async function initWebSocket() {
     }
 
     if (message.type === 'chat') {
-      const payload = message.payload as { messages: Message[]; config?: Partial<ApiConfig> };
-      await handleWSChat(payload.messages, payload.config, message.id);
+      const payload = message.payload as WSChatPayload;
+      await handleWSChat(
+        payload.messages,
+        payload.config,
+        message.id,
+        payload.tools,
+        payload.tool_choice,
+        payload.stream
+      );
     }
   });
 
@@ -47,37 +54,76 @@ async function initWebSocket() {
   console.log('[BG] WebSocket连接状态:', connected);
 }
 
-async function handleWSChat(messages: Message[], config?: Partial<ApiConfig>, messageId?: string) {
+async function handleWSChat(
+  messages: Message[],
+  config?: Partial<ApiConfig>,
+  messageId?: string,
+  tools?: Tool[],
+  toolChoice?: WSChatPayload['tool_choice'],
+  stream?: boolean
+) {
   const apiConfig = { ...await getConfig(), ...config };
   const client = getApiClient(apiConfig);
   const wsClient = getWebSocketClient();
+  const useStream = stream !== undefined ? stream : apiConfig.stream;
 
   try {
-    if (apiConfig.stream) {
+    if (useStream) {
       let fullContent = '';
-      for await (const chunk of client.streamChatCompletion(messages)) {
-        fullContent += chunk;
-        wsClient.send({
-          type: 'stream-chunk',
-          payload: { content: chunk },
-          id: messageId,
-        });
+      const toolCallsAccumulator: Map<number, { id: string; type: 'function'; function: { name: string; arguments: string } }> = new Map();
+      
+      for await (const chunk of client.streamChatCompletion(messages, tools, toolChoice)) {
+        if (typeof chunk === 'string') {
+          fullContent += chunk;
+          wsClient.send({
+            type: 'stream-chunk',
+            payload: { content: chunk },
+            id: messageId,
+          });
+        } else if (chunk.tool_calls) {
+          for (const tc of chunk.tool_calls) {
+            const existing = toolCallsAccumulator.get(tc.index) || {
+              id: '',
+              type: 'function' as const,
+              function: { name: '', arguments: '' },
+            };
+            if (tc.id) existing.id = tc.id;
+            if (tc.type) existing.type = tc.type;
+            if (tc.function?.name) existing.function.name += tc.function.name;
+            if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+            toolCallsAccumulator.set(tc.index, existing);
+          }
+          wsClient.send({
+            type: 'stream-chunk',
+            payload: { content: '', tool_calls: chunk.tool_calls },
+            id: messageId,
+          });
+        }
       }
+      
       wsClient.send({
         type: 'stream-end',
         id: messageId,
       });
+      
+      const finalToolCalls = Array.from(toolCallsAccumulator.values()) as ToolCall[];
       wsClient.send({
         type: 'chat-response',
-        payload: { content: fullContent },
+        payload: { 
+          content: fullContent || null,
+          tool_calls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+        },
         id: messageId,
       });
     } else {
-      const response = await client.chatCompletion(messages);
-      const content = response.choices[0].message.content;
+      const response = await client.chatCompletion(messages, tools, toolChoice);
+      const choice = response.choices[0];
       wsClient.send({
         type: 'chat-response',
-        payload: { content },
+        payload: { 
+          content: choice.message.content,
+          tool_calls: choice.message.tool_calls,
+        },
         id: messageId,
       });
     }
@@ -153,11 +199,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
-async function handleChat(messages: Message[], config?: ApiConfig): Promise<{ content: string }> {
+async function handleChat(messages: Message[], config?: ApiConfig): Promise<{ content: string | null; tool_calls?: ToolCall[] }> {
   const apiConfig = config || await getConfig();
   const client = getApiClient(apiConfig);
   const response = await client.chatCompletion(messages);
-  return { content: response.choices[0].message.content };
+  return { 
+    content: response.choices[0].message.content,
+    tool_calls: response.choices[0].message.tool_calls,
+  };
 }
 
 async function handleStreamChat(messages: Message[], config?: ApiConfig): Promise<void> {
@@ -166,7 +215,9 @@ async function handleStreamChat(messages: Message[], config?: ApiConfig): Promis
 
   try {
     for await (const chunk of client.streamChatCompletion(messages)) {
-      chrome.runtime.sendMessage({ type: 'stream-chunk', content: chunk });
+      if (typeof chunk === 'string') {
+        chrome.runtime.sendMessage({ type: 'stream-chunk', content: chunk });
+      }
     }
     chrome.runtime.sendMessage({ type: 'stream-end' });
   } catch (error) {

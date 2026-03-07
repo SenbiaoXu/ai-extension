@@ -26,14 +26,15 @@ npm run build
 
 详细文档: [extension/README.md](extension/README.md)
 
-### 🖥️ node-server - WebSocket中转服务器
+### 🖥️ node-server - 大模型接口中转站
 
-本地 WebSocket 服务器，用于连接浏览器扩展和外部客户端。
+提供 OpenAI 兼容的 HTTP API 接口，通过 WebSocket 与浏览器扩展通信，调用鸿蒙端侧 AI 模型。
 
 **主要功能:**
-- 接收外部消息并转发给浏览器扩展
-- 接收浏览器扩展的AI推理结果并输出
-- 支持流式响应
+- **HTTP API**: OpenAI 兼容的 REST API 接口
+- **WebSocket**: 与浏览器扩展保持长连接
+- **流式响应**: 支持 Server-Sent Events (SSE)
+- **工具调用**: 支持函数调用 (Function Calling)
 
 **快速开始:**
 ```bash
@@ -44,28 +45,67 @@ npm run dev
 
 详细文档: [node-server/README.md](node-server/README.md)
 
-## 数据流
+## 架构
 
 ```
-外部客户端 → WebSocket服务器 → 浏览器扩展 → 鸿蒙AI模型
-                ↑                              ↓
-              结果输出 ←──────────────────── 推理结果
+外部应用 → HTTP API (OpenAI兼容) → Node Server → WebSocket → 浏览器扩展 → 鸿蒙AI模型
+                                        ↑                                           ↓
+                                      HTTP响应 ←──────────────────────────────── 推理结果
 ```
 
 ## 使用方法
 
-1. 启动本地服务器:
-   ```bash
-   cd node-server && npm run dev
-   ```
+### 1. 启动 node-server
 
-2. 加载浏览器扩展到 Chrome
+```bash
+cd node-server
+npm install
+npm run dev
+```
 
-3. 扩展会自动连接到 `ws://localhost:8765`
+服务器启动后会监听:
+- HTTP API: `http://localhost:3000`
+- WebSocket: `ws://localhost:8765`
 
-4. 在服务器控制台输入消息，按回车发送
+### 2. 加载浏览器扩展
 
-5. 消息会通过扩展调用AI模型，结果返回到控制台
+1. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+2. 启用"开发者模式"
+3. 点击"加载已解压的扩展程序"
+4. 选择 `extension/dist` 目录
+
+扩展会自动连接到 WebSocket 服务器。
+
+### 3. 调用 API
+
+使用 curl 或任何 OpenAI SDK:
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "harmonyos-default",
+    "messages": [{ "role": "user", "content": "你好" }]
+  }'
+```
+
+或使用 OpenAI SDK:
+
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://localhost:3000/v1',
+  apiKey: 'dummy',
+});
+
+const response = await client.chat.completions.create({
+  model: 'harmonyos-default',
+  messages: [{ role: 'user', content: '你好' }],
+});
+
+console.log(response.choices[0].message.content);
+```
 
 ## 技术栈
 

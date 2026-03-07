@@ -15,6 +15,7 @@
 | 2026-03-07 | 构建配置优化 | 禁用代码压缩混淆，启用sourcemap便于调试定位问题 |
 | 2026-03-07 | WebSocket保活机制 | 添加心跳机制解决Service Worker空闲终止导致的连接断开问题，实现无限重连 |
 | 2026-03-07 | 日志兼容性修复 | node-server修复非流式输出日志：通过isStreamingOutput标志区分流式/非流式响应，非流式时打印完整内容 |
+| 2026-03-07 | 大模型接口中转站 | node-server升级为OpenAI兼容的HTTP API中转站，支持工具调用(Function Calling)、流式响应(SSE) |
 
 ## 当前架构蓝图
 
@@ -29,10 +30,10 @@ ai-extension/
 │   │   └── types/       # TypeScript类型定义
 │   ├── public/icons/    # 扩展图标
 │   └── dist/            # 构建输出目录
-└── node-server/         # WebSocket中转服务器
+└── node-server/         # 大模型接口中转站
     └── src/
-        ├── index.ts     # 服务器入口
-        └── types.ts     # 消息类型定义
+        ├── index.ts     # HTTP API + WebSocket服务器
+        └── types.ts     # OpenAI兼容类型定义
 ```
 
 ### 技术栈
@@ -40,13 +41,13 @@ ai-extension/
 - **扩展API**: Chrome Extension Manifest V3
 - **UI**: 原生HTML/CSS/JavaScript
 - **API**: OpenAI Chat Completions 兼容格式
-- **通信**: WebSocket (ws库)
+- **通信**: WebSocket (ws库) + HTTP API
 
 ### 数据流
 ```
-外部客户端 → WebSocket服务器 → 浏览器扩展 → 鸿蒙AI模型
-                ↑                              ↓
-              结果输出 ←──────────────────── 推理结果
+外部应用 → HTTP API (OpenAI兼容) → Node Server → WebSocket → 浏览器扩展 → 鸿蒙AI模型
+                                        ↑                                           ↓
+                                      HTTP响应 ←──────────────────────────────── 推理结果
 ```
 
 ## 决策存证 (ADR)
@@ -74,6 +75,14 @@ ai-extension/
   - 本地服务器可以作为中转站，接受外部连接
   - 扩展主动连接服务器，避免网络配置问题
 
+### ADR-005: OpenAI兼容HTTP API
+- **背景**: 需要让外部应用能够方便地调用鸿蒙端侧AI模型
+- **决策**: node-server提供OpenAI兼容的HTTP API接口
+- **原因**:
+  - OpenAI API是最广泛使用的LLM接口标准
+  - 兼容OpenAI SDK和各种第三方工具
+  - 降低接入成本，无需学习新API
+
 ## 交付物清单
 
 | 组件 | 状态 | 路径 |
@@ -85,7 +94,7 @@ ai-extension/
 | WebSocket客户端 | ✅ 完成 | extension/src/services/websocket.ts |
 | 类型定义 | ✅ 完成 | extension/src/types/ |
 | 构建配置 | ✅ 完成 | extension/vite.config.ts |
-| WebSocket服务器 | ✅ 完成 | node-server/src/ |
+| HTTP API服务器 | ✅ 完成 | node-server/src/ |
 
 ## 待办与风险
 

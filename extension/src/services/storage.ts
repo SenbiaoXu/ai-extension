@@ -51,7 +51,9 @@ export function createNewConversation(firstMessage?: string): Conversation {
 export function updateConversationTitle(conversation: Conversation, messages: Message[]): Conversation {
   if (messages.length > 0 && messages[0].role === 'user') {
     const firstUserMessage = messages[0].content;
-    conversation.title = firstUserMessage.slice(0, 30) + (firstUserMessage.length > 30 ? '...' : '');
+    if (firstUserMessage) {
+      conversation.title = firstUserMessage.slice(0, 30) + (firstUserMessage.length > 30 ? '...' : '');
+    }
   }
   conversation.updatedAt = Date.now();
   return conversation;

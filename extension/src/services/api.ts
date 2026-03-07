@@ -1,4 +1,4 @@
-import type { ApiConfig, ChatCompletionRequest, ChatCompletionResponse, StreamResponse, Message } from '../types';
+import type { ApiConfig, ChatCompletionRequest, ChatCompletionResponse, StreamResponse, Message, Tool, ToolCall } from '../types';
 
 export class HarmonyOSApiClient {
   private config: ApiConfig;
@@ -21,13 +21,15 @@ export class HarmonyOSApiClient {
     return headers;
   }
 
-  async chatCompletion(messages: Message[]): Promise<ChatCompletionResponse> {
+  async chatCompletion(messages: Message[], tools?: Tool[], toolChoice?: ChatCompletionRequest['tool_choice']): Promise<ChatCompletionResponse> {
     const request: ChatCompletionRequest = {
       model: this.config.model,
       messages,
       temperature: this.config.temperature,
       max_tokens: this.config.maxTokens,
       stream: false,
+      tools,
+      tool_choice: toolChoice,
     };
 
     const response = await fetch(`${this.config.endpoint}/chat/completions`, {
@@ -44,13 +46,15 @@ export class HarmonyOSApiClient {
     return response.json();
   }
 
-  async *streamChatCompletion(messages: Message[]): AsyncGenerator<string, void, unknown> {
+  async *streamChatCompletion(messages: Message[], tools?: Tool[], toolChoice?: ChatCompletionRequest['tool_choice']): AsyncGenerator<string | { tool_calls: Array<{ index: number; id?: string; type?: 'function'; function?: { name?: string; arguments?: string } }> }, void, unknown> {
     const request: ChatCompletionRequest = {
       model: this.config.model,
       messages,
       temperature: this.config.temperature,
       max_tokens: this.config.maxTokens,
       stream: true,
+      tools,
+      tool_choice: toolChoice,
     };
 
     const response = await fetch(`${this.config.endpoint}/chat/completions`, {
@@ -87,9 +91,12 @@ export class HarmonyOSApiClient {
 
         try {
           const json: StreamResponse = JSON.parse(trimmedLine.slice(6));
-          const content = json.choices[0]?.delta?.content;
-          if (content) {
-            yield content;
+          const choice = json.choices[0];
+          
+          if (choice?.delta?.tool_calls) {
+            yield { tool_calls: choice.delta.tool_calls };
+          } else if (choice?.delta?.content) {
+            yield choice.delta.content;
           }
         } catch {
           continue;

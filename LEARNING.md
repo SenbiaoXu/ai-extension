@@ -69,6 +69,13 @@ const btn = document.getElementById('btn') as HTMLButtonElement;
 - 使用相对路径: `import { foo } from '../services/api'`
 - 或配置别名: `import { foo } from '@/services/api'`
 
+### 流式响应中的工具调用类型
+
+OpenAI 流式响应中，`tool_calls` 的结构与完整响应不同：
+- 流式响应中 `tool_calls` 包含 `index` 字段用于标识
+- 需要使用 Map 按 index 累积工具调用参数
+- 类型定义需要区分完整 `ToolCall` 和流式 `delta` 中的部分类型
+
 ## WebSocket 中转架构
 
 ### 设计模式
@@ -88,6 +95,30 @@ const btn = document.getElementById('btn') as HTMLButtonElement;
   "id": "optional-message-id"
 }
 ```
+
+## OpenAI API 兼容实现
+
+### HTTP API 设计
+
+实现 OpenAI 兼容接口时需要：
+1. **CORS 支持**: 添加 `Access-Control-Allow-*` 头
+2. **错误格式**: 使用 OpenAI 标准错误格式 `{ error: { message, type } }`
+3. **请求映射**: 将 OpenAI 请求参数映射到内部格式
+
+### 流式响应 (SSE)
+
+Server-Sent Events 格式要求：
+- Content-Type: `text/event-stream`
+- 每条消息格式: `data: {JSON}\n\n`
+- 结束标志: `data: [DONE]\n\n`
+
+### 请求-响应关联
+
+使用唯一 ID 关联 HTTP 请求和 WebSocket 响应：
+1. 生成唯一 `requestId`
+2. 存储到 `pendingRequests` Map
+3. WebSocket 响应携带相同 ID
+4. 根据 ID 找到对应的 HTTP 响应对象
 
 ## 常见问题解决
 
@@ -127,3 +158,14 @@ content = content.replace(/\.\.\/\.\.\/js\//g, '../js/');
 **问题**: 扩展启动时服务器可能未就绪
 
 **解决**: 实现自动重连机制，消息队列缓存未发送的消息
+
+### Message.content 可能为 null
+
+**问题**: OpenAI API 中 `message.content` 可能为 `null`（如工具调用时）
+
+**解决**: 使用空值检查或可选链：
+```typescript
+if (firstUserMessage) {
+  conversation.title = firstUserMessage.slice(0, 30);
+}
+```
