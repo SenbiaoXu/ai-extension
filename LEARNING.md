@@ -85,6 +85,22 @@ const btn = document.getElementById('btn') as HTMLButtonElement;
 
 ## 常见问题解决
 
+### PowerShell 命令语法
+
+**问题**: PowerShell 不支持 `&&` 语法连接多个命令
+
+**解决**: 使用 `;` 分隔符或分开执行命令：
+```powershell
+# 错误写法
+cd extension && npm run build
+
+# 正确写法
+cd extension; npm run build
+
+# 或使用 Set-Location
+Set-Location extension; npm run build
+```
+
 ### 构建后路径错误
 
 **问题**: HTML 文件中的 JS/CSS 引用路径不正确
