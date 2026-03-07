@@ -1,4 +1,4 @@
-import type { ApiConfig, ChatCompletionRequest, ChatCompletionResponse, StreamResponse, Message, Tool, ToolCall } from '../types';
+import type { ApiConfig, ChatCompletionRequest, ChatCompletionResponse, StreamResponse, Message, Tool, ModelsResponse } from '../types';
 
 export class HarmonyOSApiClient {
   private config: ApiConfig;
@@ -115,6 +115,20 @@ export class HarmonyOSApiClient {
     } catch {
       return false;
     }
+  }
+
+  async fetchModels(): Promise<ModelsResponse> {
+    const response = await fetch(`${this.config.endpoint}/models`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`获取模型列表失败: ${response.status} - ${errorText}`);
+    }
+
+    return response.json();
   }
 }
 

@@ -174,6 +174,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'fetch-models') {
+    fetchModels(message.config)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ success: false, message: error.message }));
+    return true;
+  }
+
   if (message.type === 'ws-connect') {
     initWebSocket()
       .then(() => sendResponse({ success: wsConnected }))
@@ -236,4 +243,24 @@ async function testConnection(config?: ApiConfig): Promise<{ success: boolean; m
     success,
     message: success ? '连接成功' : '连接失败，请检查API端点配置',
   };
+}
+
+async function fetchModels(config: { endpoint: string; apiKey: string }): Promise<{ success: boolean; models?: Array<{ id: string; object: string; created: number; owned_by: string }>; message?: string }> {
+  try {
+    const client = new HarmonyOSApiClient({
+      ...DEFAULT_CONFIG,
+      endpoint: config.endpoint,
+      apiKey: config.apiKey,
+    });
+    const response = await client.fetchModels();
+    return {
+      success: true,
+      models: response.data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : '获取模型列表失败',
+    };
+  }
 }

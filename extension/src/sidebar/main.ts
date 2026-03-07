@@ -31,6 +31,10 @@ class ChatApp {
     this.config = await loadConfig<ApiConfig>(DEFAULT_CONFIG);
   }
 
+  private hasValidConfig(): boolean {
+    return !!(this.config.endpoint && this.config.model);
+  }
+
   private bindEvents() {
     this.sendButton.addEventListener('click', () => this.sendMessage());
 
@@ -74,6 +78,11 @@ class ChatApp {
   }
 
   private async testConnection() {
+    if (!this.config.endpoint) {
+      this.updateConnectionStatus('error');
+      return;
+    }
+    
     this.updateConnectionStatus('connecting');
     try {
       const response = await chrome.runtime.sendMessage({
@@ -110,6 +119,11 @@ class ChatApp {
   private async sendMessage() {
     const content = this.messageInput.value.trim();
     if (!content || this.isStreaming) return;
+
+    if (!this.hasValidConfig()) {
+      this.renderError('请先在设置中配置API端点并选择模型');
+      return;
+    }
 
     this.welcomeMessage.style.display = 'none';
     this.messageInput.value = '';

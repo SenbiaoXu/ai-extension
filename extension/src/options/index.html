@@ -71,13 +71,62 @@
 
     input[type="text"],
     input[type="number"],
-    input[type="password"] {
+    input[type="password"],
+    select {
       width: 100%;
       padding: 12px 16px;
       border: 1px solid var(--border-color);
       border-radius: var(--radius);
       font-size: 14px;
       transition: border-color 0.2s, box-shadow 0.2s;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+
+    select {
+      cursor: pointer;
+    }
+
+    select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .model-select-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .model-select-group select {
+      flex: 1;
+    }
+
+    .btn-refresh {
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-refresh:hover {
+      background: var(--border-color);
+    }
+
+    .btn-refresh:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-refresh.loading {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
     input:focus {
@@ -238,13 +287,17 @@
 
       <div class="form-group">
         <label for="model">模型名称</label>
-        <input
-          type="text"
-          id="model"
-          name="model"
-          placeholder="harmonyos-default"
-        >
-        <p class="hint">要使用的模型名称</p>
+        <div class="model-select-group">
+          <select
+            id="model"
+            name="model"
+            disabled
+          >
+            <option value="">请先获取模型列表</option>
+          </select>
+          <button type="button" class="btn-refresh" id="refresh-models-btn" title="获取模型列表">⟳</button>
+        </div>
+        <p class="hint">点击刷新按钮从API端点获取可用模型</p>
       </div>
 
       <div class="form-group">

@@ -102,10 +102,22 @@ export interface Conversation {
 }
 
 export const DEFAULT_CONFIG: ApiConfig = {
-  endpoint: 'http://localhost:8080/v1',
+  endpoint: 'http://127.0.0.1:11434/v1',
   apiKey: '',
-  model: 'harmonyos-default',
+  model: '',
   temperature: 0.7,
   maxTokens: 2048,
   stream: true,
 };
+
+export interface ModelInfo {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+}
+
+export interface ModelsResponse {
+  object: string;
+  data: ModelInfo[];
+}
