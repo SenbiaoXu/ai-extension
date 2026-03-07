@@ -1,9 +1,29 @@
 import type { Message, Tool, ToolCall } from '../types';
 
 export interface WSMessage {
-  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error';
+  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error' | 'external-request' | 'external-response';
   payload?: unknown;
   id?: string;
+}
+
+export interface WSExternalRequestPayload {
+  requestId: string;
+  model: string;
+  messages: Array<{
+    role: string;
+    content: string | null;
+  }>;
+  stream: boolean;
+  timestamp: number;
+}
+
+export interface WSExternalResponsePayload {
+  requestId: string;
+  status: 'success' | 'error' | 'timeout';
+  content?: string | null;
+  error?: string;
+  duration: number;
+  timestamp: number;
 }
 
 export interface WSChatPayload {

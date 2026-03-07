@@ -1,7 +1,7 @@
 import type { ApiConfig, Message, Tool, ToolCall } from '../types';
 import { HarmonyOSApiClient } from '../services/api';
 import { DEFAULT_CONFIG } from '../types';
-import { getWebSocketClient, type WSMessage, type WSChatPayload, type WSChatResponsePayload, type WSStreamChunkPayload } from '../services/websocket';
+import { getWebSocketClient, type WSMessage, type WSChatPayload, type WSChatResponsePayload, type WSStreamChunkPayload, type WSExternalRequestPayload, type WSExternalResponsePayload } from '../services/websocket';
 
 let apiClient: HarmonyOSApiClient | null = null;
 let wsConnected = false;
@@ -47,6 +47,25 @@ async function initWebSocket() {
         payload.tool_choice,
         payload.stream
       );
+      return;
+    }
+
+    if (message.type === 'external-request') {
+      const payload = message.payload as WSExternalRequestPayload;
+      chrome.runtime.sendMessage({
+        type: 'external-request',
+        payload,
+      }).catch(() => {});
+      return;
+    }
+
+    if (message.type === 'external-response') {
+      const payload = message.payload as WSExternalResponsePayload;
+      chrome.runtime.sendMessage({
+        type: 'external-response',
+        payload,
+      }).catch(() => {});
+      return;
     }
   });
 

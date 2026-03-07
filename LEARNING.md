@@ -265,3 +265,47 @@ if (pending && !pending.finished) {
   res.end(...);
 }
 ```
+
+## 外部消息通知机制
+
+### 需求场景
+
+**问题**: 外部应用通过node-server调用浏览器插件时，如果长时间没有响应，用户无法知道请求状态
+
+**解决**: 在侧边栏添加消息图标和红点提示，实时显示外部请求和响应状态
+
+### 实现方案
+
+1. **node-server通知**: 在HTTP请求开始和结束时，通过WebSocket广播`external-request`和`external-response`消息
+2. **background转发**: Service Worker收到消息后通过`chrome.runtime.sendMessage`转发到sidebar
+3. **sidebar显示**: 
+   - 消息图标显示未读数量红点
+   - 点击图标打开消息面板
+   - 面板显示请求ID、模型、状态、耗时等信息
+
+### 消息类型定义
+
+```typescript
+interface ExternalRequestPayload {
+  requestId: string;
+  model: string;
+  messages: Array<{ role: string; content: string | null }>;
+  stream: boolean;
+  timestamp: number;
+}
+
+interface ExternalResponsePayload {
+  requestId: string;
+  status: 'success' | 'error' | 'timeout';
+  content?: string | null;
+  error?: string;
+  duration: number;
+  timestamp: number;
+}
+```
+
+### 状态管理
+
+- 使用`pending`状态标识正在处理的请求
+- 请求完成后更新为`success`/`error`/`timeout`
+- 面板打开时清除未读计数

@@ -10,6 +10,8 @@ import type {
   ChatResponsePayload,
   StreamChunkPayload,
   ToolCall,
+  ExternalRequestPayload,
+  ExternalResponsePayload,
 } from './types.js';
 
 const HTTP_PORT = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : 3000;
@@ -64,6 +66,20 @@ function broadcastToAll(message: WebSocketMessage, excludeId?: string) {
     if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(messageStr);
     }
+  });
+}
+
+function notifyExternalRequest(payload: ExternalRequestPayload) {
+  broadcastToAll({
+    type: 'external-request',
+    payload,
+  });
+}
+
+function notifyExternalResponse(payload: ExternalResponsePayload) {
+  broadcastToAll({
+    type: 'external-response',
+    payload,
   });
 }
 
@@ -334,6 +350,14 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
       console.log(`   工具数: ${tools.length}`);
     }
 
+    notifyExternalRequest({
+      requestId,
+      model: openaiRequest.model,
+      messages: openaiRequest.messages.map(m => ({ role: m.role, content: m.content })),
+      stream,
+      timestamp: Date.now(),
+    });
+
     if (stream) {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -362,6 +386,12 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
         const pending = pendingRequests.get(requestId);
         if (pending) {
           pending.finished = true;
+          notifyExternalResponse({
+            requestId,
+            status: 'success',
+            duration: Date.now() - pending.startTime,
+            timestamp: Date.now(),
+          });
         }
         pendingRequests.delete(requestId);
       });
@@ -382,6 +412,13 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
         if (!pendingRequest.finished) {
           pendingRequest.finished = true;
           pendingRequests.delete(requestId);
+          notifyExternalResponse({
+            requestId,
+            status: 'timeout',
+            error: 'Request timeout',
+            duration: Date.now() - pendingRequest.startTime,
+            timestamp: Date.now(),
+          });
           res.writeHead(504, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             error: {
@@ -407,9 +444,17 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
           if (!pendingRequest.finished) {
             pendingRequest.finished = true;
             pendingRequests.delete(requestId);
+            const duration = Date.now() - pendingRequest.startTime;
             console.log(`\n📤 [${new Date().toISOString()}] 响应已发送`);
             console.log(`   请求ID: ${requestId}`);
-            console.log(`   耗时: ${Date.now() - pendingRequest.startTime}ms`);
+            console.log(`   耗时: ${duration}ms`);
+            notifyExternalResponse({
+              requestId,
+              status: 'success',
+              content: response.choices[0]?.message?.content || null,
+              duration,
+              timestamp: Date.now(),
+            });
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(response));
           }
@@ -419,10 +464,18 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
           if (!pendingRequest.finished) {
             pendingRequest.finished = true;
             pendingRequests.delete(requestId);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            notifyExternalResponse({
+              requestId,
+              status: 'error',
+              error: errorMessage,
+              duration: Date.now() - pendingRequest.startTime,
+              timestamp: Date.now(),
+            });
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
               error: {
-                message: error instanceof Error ? error.message : 'Unknown error',
+                message: errorMessage,
                 type: 'internal_error',
               },
             }));

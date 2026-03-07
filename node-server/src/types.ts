@@ -1,5 +1,5 @@
 export interface WebSocketMessage {
-  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error';
+  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error' | 'external-request' | 'external-response';
   payload?: unknown;
   id?: string;
 }
@@ -64,6 +64,26 @@ export interface StreamChunkPayload {
 export interface ErrorPayload {
   message: string;
   id?: string;
+}
+
+export interface ExternalRequestPayload {
+  requestId: string;
+  model: string;
+  messages: Array<{
+    role: string;
+    content: string | null;
+  }>;
+  stream: boolean;
+  timestamp: number;
+}
+
+export interface ExternalResponsePayload {
+  requestId: string;
+  status: 'success' | 'error' | 'timeout';
+  content?: string | null;
+  error?: string;
+  duration: number;
+  timestamp: number;
 }
 
 export interface OpenAIChatCompletionRequest {

@@ -2,18 +2,37 @@ import type { Message, ApiConfig, Tool } from '../types';
 import { DEFAULT_CONFIG } from '../types';
 import { loadConfig } from '../services/storage';
 
+interface ExternalMessage {
+  requestId: string;
+  model: string;
+  messages: Array<{ role: string; content: string | null }>;
+  stream: boolean;
+  timestamp: number;
+  status: 'pending' | 'success' | 'error' | 'timeout';
+  responseContent?: string | null;
+  error?: string;
+  duration?: number;
+}
+
 class ChatApp {
   private messages: Message[] = [];
   private config: ApiConfig = DEFAULT_CONFIG;
   private isStreaming = false;
   private currentAssistantContent = '';
   private currentTools: Tool[] | undefined;
+  private externalMessages: ExternalMessage[] = [];
+  private unreadCount = 0;
+  private isPanelOpen = false;
 
   private messagesContainer!: HTMLElement;
   private messageInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
   private welcomeMessage!: HTMLElement;
   private connectionStatus!: HTMLElement;
+  private externalMsgBtn!: HTMLButtonElement;
+  private msgBadge!: HTMLElement;
+  private externalMsgPanel!: HTMLElement;
+  private externalMsgList!: HTMLElement;
 
   async init() {
     this.messagesContainer = document.getElementById('messages')!;
@@ -21,6 +40,10 @@ class ChatApp {
     this.sendButton = document.getElementById('send-btn') as HTMLButtonElement;
     this.welcomeMessage = document.getElementById('welcome-message')!;
     this.connectionStatus = document.getElementById('connection-status')!;
+    this.externalMsgBtn = document.getElementById('external-msg-btn') as HTMLButtonElement;
+    this.msgBadge = document.getElementById('msg-badge')!;
+    this.externalMsgPanel = document.getElementById('external-msg-panel')!;
+    this.externalMsgList = document.getElementById('external-msg-list')!;
 
     await this.loadConfiguration();
     this.bindEvents();
@@ -66,6 +89,14 @@ class ChatApp {
       chrome.runtime.openOptionsPage();
     });
 
+    this.externalMsgBtn.addEventListener('click', () => {
+      this.toggleExternalMsgPanel();
+    });
+
+    document.getElementById('close-panel-btn')?.addEventListener('click', () => {
+      this.closeExternalMsgPanel();
+    });
+
     chrome.runtime.onMessage.addListener((message) => {
       if (message.type === 'stream-chunk') {
         this.handleStreamChunk(message.content);
@@ -73,6 +104,10 @@ class ChatApp {
         this.handleStreamEnd();
       } else if (message.type === 'stream-error') {
         this.handleStreamError(message.error);
+      } else if (message.type === 'external-request') {
+        this.handleExternalRequest(message.payload);
+      } else if (message.type === 'external-response') {
+        this.handleExternalResponse(message.payload);
       }
     });
   }
@@ -283,6 +318,122 @@ class ChatApp {
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
+  }
+
+  private handleExternalRequest(payload: { requestId: string; model: string; messages: Array<{ role: string; content: string | null }>; stream: boolean; timestamp: number }) {
+    const msg: ExternalMessage = {
+      requestId: payload.requestId,
+      model: payload.model,
+      messages: payload.messages,
+      stream: payload.stream,
+      timestamp: payload.timestamp,
+      status: 'pending',
+    };
+    
+    this.externalMessages.unshift(msg);
+    this.unreadCount++;
+    this.updateBadge();
+    this.renderExternalMessages();
+  }
+
+  private handleExternalResponse(payload: { requestId: string; status: 'success' | 'error' | 'timeout'; content?: string | null; error?: string; duration: number; timestamp: number }) {
+    const msgIndex = this.externalMessages.findIndex(m => m.requestId === payload.requestId);
+    if (msgIndex !== -1) {
+      this.externalMessages[msgIndex].status = payload.status;
+      this.externalMessages[msgIndex].responseContent = payload.content;
+      this.externalMessages[msgIndex].error = payload.error;
+      this.externalMessages[msgIndex].duration = payload.duration;
+      this.renderExternalMessages();
+    }
+  }
+
+  private toggleExternalMsgPanel() {
+    if (this.isPanelOpen) {
+      this.closeExternalMsgPanel();
+    } else {
+      this.openExternalMsgPanel();
+    }
+  }
+
+  private openExternalMsgPanel() {
+    this.isPanelOpen = true;
+    this.externalMsgPanel.classList.remove('hidden');
+    this.clearUnread();
+  }
+
+  private closeExternalMsgPanel() {
+    this.isPanelOpen = false;
+    this.externalMsgPanel.classList.add('hidden');
+  }
+
+  private updateBadge() {
+    if (this.unreadCount > 0) {
+      this.msgBadge.textContent = this.unreadCount > 99 ? '99+' : String(this.unreadCount);
+      this.msgBadge.classList.remove('hidden');
+      this.msgBadge.classList.add('has-unread');
+    } else {
+      this.msgBadge.classList.add('hidden');
+      this.msgBadge.classList.remove('has-unread');
+    }
+  }
+
+  private clearUnread() {
+    this.unreadCount = 0;
+    this.updateBadge();
+  }
+
+  private renderExternalMessages() {
+    if (this.externalMessages.length === 0) {
+      this.externalMsgList.innerHTML = '<div class="empty-state">暂无外部消息</div>';
+      return;
+    }
+
+    this.externalMsgList.innerHTML = this.externalMessages.map(msg => {
+      const statusText = this.getStatusText(msg.status);
+      const timeStr = new Date(msg.timestamp).toLocaleTimeString();
+      const lastUserMsg = msg.messages.filter(m => m.role === 'user').pop();
+      const previewContent = lastUserMsg?.content?.slice(0, 100) || '(无内容)';
+      
+      let responseContent = '';
+      if (msg.status !== 'pending' && msg.responseContent) {
+        responseContent = `<div class="msg-item-content collapsed">${this.escapeHtml(msg.responseContent.slice(0, 200))}</div>`;
+      } else if (msg.status === 'error' && msg.error) {
+        responseContent = `<div class="msg-item-content collapsed" style="color: #dc2626;">${this.escapeHtml(msg.error)}</div>`;
+      }
+
+      return `
+        <div class="external-msg-item ${msg.status}">
+          <div class="msg-item-header">
+            <span class="msg-item-id">${msg.requestId.slice(0, 16)}...</span>
+            <span class="msg-item-status ${msg.status}">${statusText}</span>
+          </div>
+          <div class="msg-item-info">
+            <span>模型: ${msg.model}</span>
+            <span>流式: ${msg.stream ? '是' : '否'}</span>
+          </div>
+          <div class="msg-item-content collapsed">${this.escapeHtml(previewContent)}</div>
+          ${responseContent}
+          <div class="msg-item-time">${timeStr}</div>
+          ${msg.duration ? `<div class="msg-item-duration">耗时: ${msg.duration}ms</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  private getStatusText(status: string): string {
+    switch (status) {
+      case 'pending': return '处理中';
+      case 'success': return '成功';
+      case 'error': return '错误';
+      case 'timeout': return '超时';
+      default: return status;
+    }
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 }
 
