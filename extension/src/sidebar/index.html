@@ -25,6 +25,9 @@
             <button class="quick-action-btn" data-prompt="你好，请介绍一下你自己">
               👋 打个招呼
             </button>
+            <button class="quick-action-btn" data-prompt="北京今天天气怎么样？" data-tools='[{"type":"function","function":{"name":"get_weather","description":"获取指定城市的天气信息","parameters":{"type":"object","properties":{"city":{"type":"string","description":"城市名称"}},"required":["city"]}}}]'>
+              🔧 调用工具
+            </button>
           </div>
         </div>
         <div id="messages" class="messages"></div>

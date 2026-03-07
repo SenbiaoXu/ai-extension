@@ -156,14 +156,14 @@ initWebSocket();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'chat') {
-    handleChat(message.messages, message.config)
+    handleChat(message.messages, message.config, message.tools)
       .then(sendResponse)
       .catch((error) => sendResponse({ error: error.message }));
     return true;
   }
 
   if (message.type === 'stream-chat') {
-    handleStreamChat(message.messages, message.config);
+    handleStreamChat(message.messages, message.config, message.tools);
     return true;
   }
 
@@ -199,22 +199,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
-async function handleChat(messages: Message[], config?: ApiConfig): Promise<{ content: string | null; tool_calls?: ToolCall[] }> {
+async function handleChat(messages: Message[], config?: ApiConfig, tools?: Tool[]): Promise<{ content: string | null; tool_calls?: ToolCall[] }> {
   const apiConfig = config || await getConfig();
   const client = getApiClient(apiConfig);
-  const response = await client.chatCompletion(messages);
+  const response = await client.chatCompletion(messages, tools);
   return { 
     content: response.choices[0].message.content,
     tool_calls: response.choices[0].message.tool_calls,
   };
 }
 
-async function handleStreamChat(messages: Message[], config?: ApiConfig): Promise<void> {
+async function handleStreamChat(messages: Message[], config?: ApiConfig, tools?: Tool[]): Promise<void> {
   const apiConfig = config || await getConfig();
   const client = getApiClient(apiConfig);
 
   try {
-    for await (const chunk of client.streamChatCompletion(messages)) {
+    for await (const chunk of client.streamChatCompletion(messages, tools)) {
       if (typeof chunk === 'string') {
         chrome.runtime.sendMessage({ type: 'stream-chunk', content: chunk });
       }

@@ -1,4 +1,4 @@
-import type { Message, ApiConfig } from '../types';
+import type { Message, ApiConfig, Tool } from '../types';
 import { DEFAULT_CONFIG } from '../types';
 import { loadConfig } from '../services/storage';
 
@@ -7,6 +7,7 @@ class ChatApp {
   private config: ApiConfig = DEFAULT_CONFIG;
   private isStreaming = false;
   private currentAssistantContent = '';
+  private currentTools: Tool[] | undefined;
 
   private messagesContainer!: HTMLElement;
   private messageInput!: HTMLTextAreaElement;
@@ -48,8 +49,10 @@ class ChatApp {
     document.querySelectorAll('.quick-action-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const prompt = (e.currentTarget as HTMLElement).dataset.prompt;
+        const toolsJson = (e.currentTarget as HTMLElement).dataset.tools;
         if (prompt) {
           this.messageInput.value = prompt;
+          this.currentTools = toolsJson ? JSON.parse(toolsJson) : undefined;
           this.sendMessage();
         }
       });
@@ -122,31 +125,36 @@ class ChatApp {
 
     this.renderTypingIndicator();
 
+    const tools = this.currentTools;
+    this.currentTools = undefined;
+
     if (this.config.stream) {
-      await this.streamChat();
+      await this.streamChat(tools);
     } else {
-      await this.normalChat();
+      await this.normalChat(tools);
     }
   }
 
-  private async streamChat() {
+  private async streamChat(tools?: Tool[]) {
     try {
       await chrome.runtime.sendMessage({
         type: 'stream-chat',
         messages: this.messages,
         config: this.config,
+        tools,
       });
     } catch (error) {
       this.handleStreamError(error instanceof Error ? error.message : '发送失败');
     }
   }
 
-  private async normalChat() {
+  private async normalChat(tools?: Tool[]) {
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'chat',
         messages: this.messages,
         config: this.config,
+        tools,
       });
 
       if (response.error) {
