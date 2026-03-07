@@ -13,6 +13,8 @@ const clients: Map<string, ConnectedClient> = new Map();
 
 const wss = new WebSocketServer({ port: PORT });
 
+let isStreamingOutput = false;
+
 function generateClientId(): string {
   return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
@@ -50,14 +52,20 @@ function handleMessage(data: RawData, clientId: string) {
         break;
 
       case 'chat-response':
-        console.log('✅ 收到聊天响应:');
+        if (!isStreamingOutput) {
+          const content = (message.payload as { content: string })?.content || '';
+          console.log(content);
+          console.log('\n');
+        }
         break;
 
       case 'stream-chunk':
+        isStreamingOutput = true;
         process.stdout.write((message.payload as { content: string })?.content || '');
         break;
 
       case 'stream-end':
+        isStreamingOutput = false;
         process.stdout.write('\n\n');
         break;
 
