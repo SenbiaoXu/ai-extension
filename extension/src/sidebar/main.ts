@@ -392,11 +392,19 @@ class ChatApp {
       const statusText = this.getStatusText(msg.status);
       const timeStr = new Date(msg.timestamp).toLocaleTimeString();
       const lastUserMsg = msg.messages.filter(m => m.role === 'user').pop();
-      const previewContent = lastUserMsg?.content?.slice(0, 100) || '(无内容)';
+      const rawContent = lastUserMsg?.content;
+      const previewContent = typeof rawContent === 'string' 
+        ? rawContent.slice(0, 100) 
+        : rawContent 
+          ? JSON.stringify(rawContent).slice(0, 100) 
+          : '(无内容)';
       
       let responseContent = '';
       if (msg.status !== 'pending' && msg.responseContent) {
-        responseContent = `<div class="msg-item-content collapsed">${this.escapeHtml(msg.responseContent.slice(0, 200))}</div>`;
+        const respText = typeof msg.responseContent === 'string' 
+          ? msg.responseContent 
+          : JSON.stringify(msg.responseContent);
+        responseContent = `<div class="msg-item-content collapsed">${this.escapeHtml(respText.slice(0, 200))}</div>`;
       } else if (msg.status === 'error' && msg.error) {
         responseContent = `<div class="msg-item-content collapsed" style="color: #dc2626;">${this.escapeHtml(msg.error)}</div>`;
       }

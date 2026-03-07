@@ -113,6 +113,13 @@ function handleWSMessage(data: RawData, clientId: string) {
             pending.res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
             pending.res.write('data: [DONE]\n\n');
             pending.res.end();
+            notifyExternalResponse({
+              requestId: message.id || '',
+              status: 'success',
+              content: payload.content,
+              duration: Date.now() - pending.startTime,
+              timestamp: Date.now(),
+            });
           } else {
             const response: OpenAIChatCompletionResponse = {
               id: message.id || '',
@@ -130,6 +137,13 @@ function handleWSMessage(data: RawData, clientId: string) {
               }],
             };
             pending.resolve(response);
+            notifyExternalResponse({
+              requestId: message.id || '',
+              status: 'success',
+              content: payload.content,
+              duration: Date.now() - pending.startTime,
+              timestamp: Date.now(),
+            });
           }
           pendingRequests.delete(message.id || '');
         } else {
@@ -188,6 +202,12 @@ function handleWSMessage(data: RawData, clientId: string) {
           pending.res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
           pending.res.write('data: [DONE]\n\n');
           pending.res.end();
+          notifyExternalResponse({
+            requestId: message.id || '',
+            status: 'success',
+            duration: Date.now() - pending.startTime,
+            timestamp: Date.now(),
+          });
           pendingRequests.delete(message.id || '');
         } else {
           isStreamingOutput = false;
@@ -208,6 +228,13 @@ function handleWSMessage(data: RawData, clientId: string) {
           } else {
             pending.reject(new Error(payload.message));
           }
+          notifyExternalResponse({
+            requestId: message.id || '',
+            status: 'error',
+            error: payload.message,
+            duration: Date.now() - pending.startTime,
+            timestamp: Date.now(),
+          });
           pendingRequests.delete(message.id || '');
         } else {
           console.error('❌ 流式响应错误:', payload.message);
