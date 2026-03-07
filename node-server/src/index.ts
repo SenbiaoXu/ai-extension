@@ -36,8 +36,6 @@ function sendToClient(clientId: string, message: WebSocketMessage) {
 function handleMessage(data: RawData, clientId: string) {
   try {
     const message: WebSocketMessage = JSON.parse(data.toString());
-    
-    console.log(`[${new Date().toISOString()}] 收到消息 [${clientId}]:`, message.type);
 
     switch (message.type) {
       case 'ping':
@@ -45,21 +43,22 @@ function handleMessage(data: RawData, clientId: string) {
         break;
 
       case 'chat':
+        console.log(`[${new Date().toISOString()}] 收到消息 [${clientId}]:`, message.type);
         console.log('📝 聊天请求:', JSON.stringify((message.payload as ChatPayload)?.messages, null, 2));
         console.log('⏳ 等待浏览器扩展处理并返回结果...\n');
         broadcastToAll(message, clientId);
         break;
 
       case 'chat-response':
-        process.stdout.write('✅ 收到聊天响应: ');
-        process.stdout.write((message.payload as { content: string })?.content || '');
-        process.stdout.write('\n\n');
+        console.log('✅ 收到聊天响应:');
         break;
 
       case 'stream-chunk':
+        process.stdout.write((message.payload as { content: string })?.content || '');
         break;
 
       case 'stream-end':
+        process.stdout.write('\n\n');
         break;
 
       case 'stream-error':
@@ -67,7 +66,7 @@ function handleMessage(data: RawData, clientId: string) {
         break;
 
       default:
-        console.log('未知消息类型:', message.type);
+        console.log(`[${new Date().toISOString()}] 收到消息 [${clientId}]:`, message.type);
     }
   } catch (error) {
     console.error('解析消息失败:', error);
