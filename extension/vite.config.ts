@@ -34,6 +34,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    minify: false,
+    sourcemap: true,
     rollupOptions: {
       input: {
         sidebar: resolve(__dirname, 'src/sidebar/index.html'),
