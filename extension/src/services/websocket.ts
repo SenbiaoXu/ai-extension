@@ -21,11 +21,17 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = Infinity;
   private reconnectDelay = 1000;
+  private maxReconnectDelay = 30000;
   private isConnected = false;
   private messageQueue: WSMessage[] = [];
   private onMessageCallback: ((message: WSMessage) => void) | null = null;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
+  private readonly heartbeatIntervalMs = 25000;
+  private readonly heartbeatTimeoutMs = 10000;
+  private onConnectionChangeCallback: ((connected: boolean) => void) | null = null;
 
   constructor(url: string = 'ws://localhost:8765') {
     this.url = url;
@@ -34,19 +40,28 @@ export class WebSocketClient {
   connect(): Promise<boolean> {
     return new Promise((resolve) => {
       try {
+        this.cleanup();
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
           console.log('[WS] 已连接到服务器');
           this.isConnected = true;
           this.reconnectAttempts = 0;
+          this.startHeartbeat();
           this.flushMessageQueue();
+          if (this.onConnectionChangeCallback) {
+            this.onConnectionChangeCallback(true);
+          }
           resolve(true);
         };
 
         this.ws.onmessage = (event) => {
           try {
             const message: WSMessage = JSON.parse(event.data);
+            if (message.type === 'pong') {
+              this.resetHeartbeatTimeout();
+              return;
+            }
             console.log('[WS] 收到消息:', message.type);
             if (this.onMessageCallback) {
               this.onMessageCallback(message);
@@ -56,9 +71,13 @@ export class WebSocketClient {
           }
         };
 
-        this.ws.onclose = () => {
-          console.log('[WS] 连接已关闭');
+        this.ws.onclose = (event) => {
+          console.log('[WS] 连接已关闭, code:', event.code, 'reason:', event.reason);
           this.isConnected = false;
+          this.stopHeartbeat();
+          if (this.onConnectionChangeCallback) {
+            this.onConnectionChangeCallback(false);
+          }
           this.attemptReconnect();
         };
 
@@ -77,11 +96,61 @@ export class WebSocketClient {
   private attemptReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`[WS] 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+      const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+      console.log(`[WS] 尝试重连 (${this.reconnectAttempts}), ${delay}ms后重试...`);
       setTimeout(() => {
         this.connect();
-      }, this.reconnectDelay * this.reconnectAttempts);
+      }, delay);
     }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+        this.heartbeatTimeout = setTimeout(() => {
+          console.log('[WS] 心跳超时，断开连接');
+          this.ws?.close();
+        }, this.heartbeatTimeoutMs);
+      }
+    }, this.heartbeatIntervalMs);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
+  }
+
+  private resetHeartbeatTimeout() {
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
+  }
+
+  private cleanup() {
+    this.stopHeartbeat();
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      if (this.ws.readyState === WebSocket.OPEN) {
+        this.ws.close();
+      }
+      this.ws = null;
+    }
+  }
+
+  onConnectionChange(callback: (connected: boolean) => void) {
+    this.onConnectionChangeCallback = callback;
   }
 
   private flushMessageQueue() {
@@ -107,11 +176,8 @@ export class WebSocketClient {
   }
 
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-      this.isConnected = false;
-    }
+    this.cleanup();
+    this.isConnected = false;
   }
 
   getConnectionStatus(): boolean {

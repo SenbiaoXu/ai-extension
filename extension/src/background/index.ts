@@ -23,6 +23,11 @@ async function getConfig(): Promise<ApiConfig> {
 async function initWebSocket() {
   const wsClient = getWebSocketClient();
   
+  wsClient.onConnectionChange((connected) => {
+    wsConnected = connected;
+    console.log('[BG] WebSocket连接状态变化:', connected);
+  });
+
   wsClient.onMessage(async (message: WSMessage) => {
     console.log('[BG] 收到WebSocket消息:', message.type);
     
