@@ -41,6 +41,27 @@ const wss = new WebSocketServer({ port: WS_PORT });
 
 let isStreamingOutput = false;
 
+function convertContentToString(content: unknown): string | null {
+  if (content === null || content === undefined) {
+    return null;
+  }
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    const textParts: string[] = [];
+    for (const part of content) {
+      if (typeof part === 'object' && part !== null && 'type' in part) {
+        if (part.type === 'text' && 'text' in part) {
+          textParts.push(String(part.text));
+        }
+      }
+    }
+    return textParts.join('\n') || null;
+  }
+  return JSON.stringify(content);
+}
+
 function generateClientId(): string {
   return `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
@@ -356,8 +377,13 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
     const requestId = generateRequestId();
     const { stream = false, tools, tool_choice } = openaiRequest;
 
+    const convertedMessages = openaiRequest.messages.map(m => ({
+      ...m,
+      content: convertContentToString(m.content),
+    }));
+
     const wsPayload: ChatPayload = {
-      messages: openaiRequest.messages,
+      messages: convertedMessages,
       config: {
         model: openaiRequest.model,
         temperature: openaiRequest.temperature,

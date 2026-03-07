@@ -392,18 +392,11 @@ class ChatApp {
       const statusText = this.getStatusText(msg.status);
       const timeStr = new Date(msg.timestamp).toLocaleTimeString();
       const lastUserMsg = msg.messages.filter(m => m.role === 'user').pop();
-      const rawContent = lastUserMsg?.content;
-      const previewContent = typeof rawContent === 'string' 
-        ? rawContent.slice(0, 100) 
-        : rawContent 
-          ? JSON.stringify(rawContent).slice(0, 100) 
-          : '(无内容)';
+      const previewContent = this.extractContentPreview(lastUserMsg?.content);
       
       let responseContent = '';
       if (msg.status !== 'pending' && msg.responseContent) {
-        const respText = typeof msg.responseContent === 'string' 
-          ? msg.responseContent 
-          : JSON.stringify(msg.responseContent);
+        const respText = this.extractContentPreview(msg.responseContent);
         responseContent = `<div class="msg-item-content collapsed">${this.escapeHtml(respText.slice(0, 200))}</div>`;
       } else if (msg.status === 'error' && msg.error) {
         responseContent = `<div class="msg-item-content collapsed" style="color: #dc2626;">${this.escapeHtml(msg.error)}</div>`;
@@ -426,6 +419,29 @@ class ChatApp {
         </div>
       `;
     }).join('');
+  }
+
+  private extractContentPreview(content: unknown): string {
+    if (content === null || content === undefined) {
+      return '(无内容)';
+    }
+    if (typeof content === 'string') {
+      return content.slice(0, 100) || '(空内容)';
+    }
+    if (Array.isArray(content)) {
+      const textParts: string[] = [];
+      for (const part of content) {
+        if (typeof part === 'object' && part !== null && 'type' in part) {
+          if (part.type === 'text' && 'text' in part) {
+            textParts.push(String(part.text));
+          } else if (part.type === 'image_url') {
+            textParts.push('[图片]');
+          }
+        }
+      }
+      return textParts.join(' ').slice(0, 100) || '(多模态内容)';
+    }
+    return JSON.stringify(content).slice(0, 100);
   }
 
   private getStatusText(status: string): string {
