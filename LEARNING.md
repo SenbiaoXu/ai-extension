@@ -169,3 +169,45 @@ if (firstUserMessage) {
   conversation.title = firstUserMessage.slice(0, 30);
 }
 ```
+
+## Node.js 服务器开发
+
+### 优雅关闭 (Graceful Shutdown)
+
+**问题**: 服务器退出时卡在"正在关闭服务器"，无法正常退出
+
+**原因**:
+- `wss.close()` 不会强制关闭现有 WebSocket 连接，有客户端连接时回调永不触发
+- `httpServer.close()` 会等待所有 keep-alive 连接关闭
+
+**解决**: 实现优雅关闭机制：
+1. 主动关闭所有客户端连接
+2. 清空连接 Map
+3. 添加强制退出超时作为兜底
+4. 支持 SIGINT 和 SIGTERM 信号
+
+**关键代码模式**:
+```typescript
+function gracefulShutdown(signal: string) {
+  const forceExitTimeout = setTimeout(() => {
+    process.exit(1);
+  }, 3000);
+
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.close(1001, 'Server shutting down');
+    }
+  });
+  clients.clear();
+
+  wss.close(() => {
+    httpServer.close(() => {
+      clearTimeout(forceExitTimeout);
+      process.exit(0);
+    });
+  });
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+```

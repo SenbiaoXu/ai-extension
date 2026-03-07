@@ -435,12 +435,30 @@ httpServer.listen(HTTP_PORT, () => {
   console.log('');
 });
 
-process.on('SIGINT', () => {
-  console.log('\n\n👋 正在关闭服务器...');
+function gracefulShutdown(signal: string) {
+  console.log(`\n\n👋 收到 ${signal} 信号，正在关闭服务器...`);
+  
+  const forceExitTimeout = setTimeout(() => {
+    console.log('⚠️ 强制退出');
+    process.exit(1);
+  }, 3000);
+
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.close(1001, 'Server shutting down');
+    }
+  });
+  clients.clear();
+
   wss.close(() => {
+    console.log('✅ WebSocket 服务器已关闭');
     httpServer.close(() => {
-      console.log('✅ 服务器已关闭');
+      clearTimeout(forceExitTimeout);
+      console.log('✅ HTTP 服务器已关闭');
       process.exit(0);
     });
   });
-});
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
