@@ -309,3 +309,45 @@ interface ExternalResponsePayload {
 - 使用`pending`状态标识正在处理的请求
 - 请求完成后更新为`success`/`error`/`timeout`
 - 面板打开时清除未读计数
+
+## OpenAI 多内容格式兼容
+
+### 问题场景
+
+外部应用发送OpenAI多内容格式消息（用于vision等多模态场景）：
+```json
+{
+  "messages": [
+    {"role": "user", "content": [{"type": "text", "text": "描述这张图片"}, {"type": "image_url", "image_url": {"url": "..."}}]}
+  ]
+}
+```
+
+但鸿蒙端侧模型只接受字符串格式，导致报错：`Field 'messages[1].content' must be string`
+
+### 解决方案
+
+1. **node-server转换**: 添加 `convertContentToString()` 函数，将多内容格式转换为字符串：
+   - 提取 `type: "text"` 的文本内容
+   - 多个文本部分用换行符连接
+   - 转换后再转发给端侧模型
+
+2. **sidebar显示**: 添加 `extractContentPreview()` 函数，正确解析和显示多内容格式：
+   - 字符串：直接显示
+   - 数组格式：提取文本内容，图片显示为 `[图片]`
+   - 其他对象：JSON序列化显示
+
+### 关键代码模式
+
+```typescript
+function convertContentToString(content: unknown): string | null {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(part => part.type === 'text')
+      .map(part => part.text)
+      .join('\n');
+  }
+  return JSON.stringify(content);
+}
+```
