@@ -237,3 +237,31 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 **解决**: 在发送消息前验证配置完整性：
 - 检查 `endpoint` 和 `model` 是否已配置
 - 未配置时显示错误提示引导用户到设置页面
+
+### HTTP 响应重复发送错误
+
+**问题**: "Cannot write headers after they are sent to the client" 错误
+
+**原因**: HTTP 响应被多次发送，常见于以下场景：
+1. **超时竞态条件**: 超时回调和 Promise 回调同时尝试发送响应
+2. **流式错误处理**: 流式输出已开始后尝试调用 `writeHead`
+3. **消息重复处理**: WebSocket 消息被多次触发导致重复结束响应
+
+**解决**: 使用 `finished` 标志位防止重复响应：
+1. 在请求对象中添加 `finished: boolean` 字段
+2. 所有响应发送前检查 `!pending.finished`
+3. 发送响应后立即设置 `finished = true`
+4. 流式错误时直接写入 SSE 格式消息，不再调用 `writeHead`
+
+**关键模式**:
+```typescript
+interface PendingRequest {
+  finished: boolean;
+}
+
+if (pending && !pending.finished) {
+  pending.finished = true;
+  res.writeHead(...);
+  res.end(...);
+}
+```

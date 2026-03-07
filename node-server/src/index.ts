@@ -29,6 +29,7 @@ interface PendingRequest {
   chunks: Array<{ content: string | null; tool_calls?: Array<{ index: number; id?: string; type?: 'function'; function?: { name?: string; arguments?: string } }> }>;
   model: string;
   startTime: number;
+  finished: boolean;
 }
 
 const clients: Map<string, ConnectedClient> = new Map();
@@ -79,7 +80,8 @@ function handleWSMessage(data: RawData, clientId: string) {
         const payload = message.payload as ChatResponsePayload;
         const pending = pendingRequests.get(message.id || '');
         
-        if (pending) {
+        if (pending && !pending.finished) {
+          pending.finished = true;
           if (pending.stream && pending.res) {
             const streamResponse: OpenAIStreamResponse = {
               id: message.id || '',
@@ -127,7 +129,7 @@ function handleWSMessage(data: RawData, clientId: string) {
         const payload = message.payload as StreamChunkPayload;
         const pending = pendingRequests.get(message.id || '');
         
-        if (pending && pending.stream && pending.res) {
+        if (pending && !pending.finished && pending.stream && pending.res) {
           const streamResponse: OpenAIStreamResponse = {
             id: message.id || '',
             object: 'chat.completion.chunk',
@@ -154,7 +156,8 @@ function handleWSMessage(data: RawData, clientId: string) {
       case 'stream-end': {
         const pending = pendingRequests.get(message.id || '');
         
-        if (pending && pending.stream && pending.res) {
+        if (pending && !pending.finished && pending.stream && pending.res) {
+          pending.finished = true;
           const streamResponse: OpenAIStreamResponse = {
             id: message.id || '',
             object: 'chat.completion.chunk',
@@ -181,10 +184,11 @@ function handleWSMessage(data: RawData, clientId: string) {
         const payload = message.payload as { message: string };
         const pending = pendingRequests.get(message.id || '');
         
-        if (pending) {
+        if (pending && !pending.finished) {
+          pending.finished = true;
           if (pending.stream && pending.res) {
-            pending.res.writeHead(500, { 'Content-Type': 'application/json' });
-            pending.res.end(JSON.stringify({ error: { message: payload.message, type: 'internal_error' } }));
+            pending.res.write(`data: ${JSON.stringify({ error: { message: payload.message, type: 'internal_error' } })}\n\n`);
+            pending.res.end();
           } else {
             pending.reject(new Error(payload.message));
           }
@@ -345,6 +349,7 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
         chunks: [],
         model: openaiRequest.model,
         startTime: Date.now(),
+        finished: false,
       });
 
       sendToClient(client.id, {
@@ -354,29 +359,42 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
       });
 
       req.on('close', () => {
+        const pending = pendingRequests.get(requestId);
+        if (pending) {
+          pending.finished = true;
+        }
         pendingRequests.delete(requestId);
       });
     } else {
+      const pendingRequest: PendingRequest = {
+        resolve: () => {},
+        reject: () => {},
+        stream: false,
+        chunks: [],
+        model: openaiRequest.model,
+        startTime: Date.now(),
+        finished: false,
+      };
+      
+      pendingRequests.set(requestId, pendingRequest);
+
       const timeout = setTimeout(() => {
-        pendingRequests.delete(requestId);
-        res.writeHead(504, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: {
-            message: 'Request timeout',
-            type: 'timeout_error',
-          },
-        }));
+        if (!pendingRequest.finished) {
+          pendingRequest.finished = true;
+          pendingRequests.delete(requestId);
+          res.writeHead(504, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: {
+              message: 'Request timeout',
+              type: 'timeout_error',
+            },
+          }));
+        }
       }, 120000);
 
       new Promise<OpenAIChatCompletionResponse>((resolve, reject) => {
-        pendingRequests.set(requestId, {
-          resolve,
-          reject,
-          stream: false,
-          chunks: [],
-          model: openaiRequest.model,
-          startTime: Date.now(),
-        });
+        pendingRequest.resolve = resolve;
+        pendingRequest.reject = reject;
 
         sendToClient(client.id, {
           type: 'chat',
@@ -386,23 +404,29 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
       })
         .then((response) => {
           clearTimeout(timeout);
-          pendingRequests.delete(requestId);
-          console.log(`\n📤 [${new Date().toISOString()}] 响应已发送`);
-          console.log(`   请求ID: ${requestId}`);
-          console.log(`   耗时: ${Date.now() - (pendingRequests.get(requestId)?.startTime || Date.now())}ms`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(response));
+          if (!pendingRequest.finished) {
+            pendingRequest.finished = true;
+            pendingRequests.delete(requestId);
+            console.log(`\n📤 [${new Date().toISOString()}] 响应已发送`);
+            console.log(`   请求ID: ${requestId}`);
+            console.log(`   耗时: ${Date.now() - pendingRequest.startTime}ms`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response));
+          }
         })
         .catch((error) => {
           clearTimeout(timeout);
-          pendingRequests.delete(requestId);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            error: {
-              message: error instanceof Error ? error.message : 'Unknown error',
-              type: 'internal_error',
-            },
-          }));
+          if (!pendingRequest.finished) {
+            pendingRequest.finished = true;
+            pendingRequests.delete(requestId);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: {
+                message: error instanceof Error ? error.message : 'Unknown error',
+                type: 'internal_error',
+              },
+            }));
+          }
         });
     }
     return;
