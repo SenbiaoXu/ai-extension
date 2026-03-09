@@ -421,9 +421,18 @@ setTimeout(() => {
 
 **解决**: 移除 `activeTab` 权限，遵循最小权限原则
 
-### host_permissions 必要性
+### host_permissions 最小化
 
-`host_permissions: ["<all_urls>"]` 必须保留，因为：
-- Service Worker 中 `fetch` 请求需要声明目标域名权限
-- API 端点由用户动态配置（Ollama、OpenAI、自定义服务器等）
-- 无法预先确定所有可能的端点域名
+**问题**: `host_permissions: ["<all_urls>"]` 权限过于宽泛，可能引起用户安全顾虑
+
+**解决**: 将权限最小化为仅允许本地服务地址：
+```json
+"host_permissions": [
+  "http://127.0.0.1:*/*",
+  "http://localhost:*/*"
+]
+```
+
+**适用场景**: 当API端点和密钥由系统预设且不允许用户修改时，可以限制为本地地址
+
+**注意**: 如果需要支持用户自定义远程API端点，仍需使用 `<all_urls>` 或动态添加权限

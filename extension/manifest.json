@@ -8,7 +8,8 @@
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "http://127.0.0.1:*/*",
+    "http://localhost:*/*"
   ],
   "action": {
     "default_title": "打开鸿蒙AI助手",
