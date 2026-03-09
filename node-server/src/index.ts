@@ -15,7 +15,7 @@ import type {
   ModelsResponsePayload,
 } from './types.js';
 
-const HTTP_PORT = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : 3000;
+const HTTP_PORT = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : 11435;
 const WS_PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT, 10) : 8765;
 
 interface ConnectedClient {

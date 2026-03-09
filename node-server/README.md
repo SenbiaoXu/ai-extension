@@ -124,7 +124,7 @@ data: [DONE]
 ### 工具调用 (Function Calling)
 
 ```bash
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:11435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "harmonyos-default",
@@ -191,7 +191,7 @@ curl http://localhost:3000/v1/chat/completions \
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  baseURL: 'http://localhost:3000/v1',
+  baseURL: 'http://localhost:11435/v1',
   apiKey: 'dummy', // 可以是任意值
 });
 
