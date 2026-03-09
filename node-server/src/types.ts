@@ -1,5 +1,5 @@
 export interface WebSocketMessage {
-  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error' | 'external-request' | 'external-response';
+  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error' | 'external-request' | 'external-response' | 'fetch-models' | 'models-response';
   payload?: unknown;
   id?: string;
 }
@@ -164,4 +164,14 @@ export interface OpenAIModelsResponse {
     created: number;
     owned_by: string;
   }>;
+}
+
+export interface ModelsResponsePayload {
+  models: Array<{
+    id: string;
+    object: string;
+    created: number;
+    owned_by: string;
+  }>;
+  error?: string;
 }

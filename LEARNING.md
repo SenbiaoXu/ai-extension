@@ -351,3 +351,53 @@ function convertContentToString(content: unknown): string | null {
   return JSON.stringify(content);
 }
 ```
+
+## 模型列表转发机制
+
+### 问题场景
+
+node-server 的 `/v1/models` 端点原本返回硬编码的模型列表，无法反映端侧实际可用的模型。
+
+### 解决方案
+
+实现完整的模型列表转发机制：
+
+1. **node-server**: `/v1/models` 端点通过 WebSocket 向浏览器扩展发送 `fetch-models` 消息
+2. **浏览器扩展**: 收到消息后调用配置的 API 端点获取模型列表，返回 `models-response` 消息
+3. **node-server**: 收到响应后返回给 HTTP 客户端
+
+### 消息类型
+
+```typescript
+// 请求模型列表
+{ type: 'fetch-models', id: 'request-id' }
+
+// 返回模型列表
+{ 
+  type: 'models-response', 
+  id: 'request-id',
+  payload: { models: [...], error?: string }
+}
+```
+
+### Pending 请求管理
+
+类似于 chat 请求，使用 Map 管理 pending 的模型请求：
+```typescript
+const pendingModelsRequests = new Map<string, {
+  resolve: (value: ModelsResponsePayload) => void;
+  reject: (reason: unknown) => void;
+}>();
+```
+
+### 超时处理
+
+设置 30 秒超时，防止请求无限等待：
+```typescript
+setTimeout(() => {
+  if (pendingModelsRequests.has(requestId)) {
+    pendingModelsRequests.delete(requestId);
+    reject(new Error('Request timeout'));
+  }
+}, 30000);
+```

@@ -1,7 +1,7 @@
 import type { Message, Tool, ToolCall } from '../types';
 
 export interface WSMessage {
-  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error' | 'external-request' | 'external-response';
+  type: 'chat' | 'chat-response' | 'stream-chunk' | 'stream-end' | 'stream-error' | 'ping' | 'pong' | 'connected' | 'error' | 'external-request' | 'external-response' | 'fetch-models' | 'models-response';
   payload?: unknown;
   id?: string;
 }

@@ -12,6 +12,7 @@ import type {
   ToolCall,
   ExternalRequestPayload,
   ExternalResponsePayload,
+  ModelsResponsePayload,
 } from './types.js';
 
 const HTTP_PORT = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : 3000;
@@ -36,6 +37,10 @@ interface PendingRequest {
 
 const clients: Map<string, ConnectedClient> = new Map();
 const pendingRequests: Map<string, PendingRequest> = new Map();
+const pendingModelsRequests: Map<string, {
+  resolve: (value: ModelsResponsePayload) => void;
+  reject: (reason: unknown) => void;
+}> = new Map();
 
 const wss = new WebSocketServer({ port: WS_PORT });
 
@@ -270,6 +275,20 @@ function handleWSMessage(data: RawData, clientId: string) {
         broadcastToAll(message, clientId);
         break;
 
+      case 'models-response': {
+        const payload = message.payload as ModelsResponsePayload;
+        const pending = pendingModelsRequests.get(message.id || '');
+        if (pending) {
+          if (payload.error) {
+            pending.reject(new Error(payload.error));
+          } else {
+            pending.resolve(payload);
+          }
+          pendingModelsRequests.delete(message.id || '');
+        }
+        break;
+      }
+
       default:
         console.log(`[${new Date().toISOString()}] 收到消息 [${clientId}]:`, message.type);
     }
@@ -327,17 +346,54 @@ async function handleOpenAIRequest(req: IncomingMessage, res: ServerResponse): P
   }
 
   if (url === '/v1/models' && method === 'GET') {
-    const modelsResponse: OpenAIModelsResponse = {
-      object: 'list',
-      data: [{
-        id: 'harmonyos-default',
-        object: 'model',
-        created: Math.floor(Date.now() / 1000),
-        owned_by: 'harmonyos',
-      }],
-    };
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(modelsResponse));
+    const client = getFirstClient();
+    
+    if (!client) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: {
+          message: 'No browser extension connected. Please ensure the extension is running and connected.',
+          type: 'service_unavailable',
+        },
+      }));
+      return;
+    }
+
+    const requestId = generateRequestId();
+    
+    const modelsPromise = new Promise<ModelsResponsePayload>((resolve, reject) => {
+      pendingModelsRequests.set(requestId, { resolve, reject });
+      
+      setTimeout(() => {
+        if (pendingModelsRequests.has(requestId)) {
+          pendingModelsRequests.delete(requestId);
+          reject(new Error('Request timeout'));
+        }
+      }, 30000);
+    });
+
+    sendToClient(client.id, {
+      type: 'fetch-models',
+      id: requestId,
+    });
+
+    try {
+      const response = await modelsPromise;
+      const modelsResponse: OpenAIModelsResponse = {
+        object: 'list',
+        data: response.models,
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(modelsResponse));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: {
+          message: error instanceof Error ? error.message : 'Failed to fetch models',
+          type: 'internal_error',
+        },
+      }));
+    }
     return;
   }
 

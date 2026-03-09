@@ -67,6 +67,11 @@ async function initWebSocket() {
       }).catch(() => {});
       return;
     }
+
+    if (message.type === 'fetch-models') {
+      await handleWSFetchModels(message.id);
+      return;
+    }
   });
 
   const connected = await wsClient.connect();
@@ -281,5 +286,43 @@ async function fetchModels(config: { endpoint: string; apiKey: string }): Promis
       success: false,
       message: error instanceof Error ? error.message : '获取模型列表失败',
     };
+  }
+}
+
+async function handleWSFetchModels(messageId?: string) {
+  const wsClient = getWebSocketClient();
+  const config = await getConfig();
+  
+  if (!config.endpoint) {
+    wsClient.send({
+      type: 'models-response',
+      id: messageId,
+      payload: {
+        models: [],
+        error: 'API endpoint not configured',
+      },
+    });
+    return;
+  }
+
+  try {
+    const client = getApiClient(config);
+    const response = await client.fetchModels();
+    wsClient.send({
+      type: 'models-response',
+      id: messageId,
+      payload: {
+        models: response.data,
+      },
+    });
+  } catch (error) {
+    wsClient.send({
+      type: 'models-response',
+      id: messageId,
+      payload: {
+        models: [],
+        error: error instanceof Error ? error.message : 'Failed to fetch models',
+      },
+    });
   }
 }
