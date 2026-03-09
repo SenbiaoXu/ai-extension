@@ -433,10 +433,12 @@ setTimeout(() => {
 **解决**: 将权限最小化为仅允许本地服务地址：
 ```json
 "host_permissions": [
-  "http://127.0.0.1:*/*",
-  "http://localhost:*/*"
+  "http://127.0.0.1/*",
+  "http://localhost/*"
 ]
 ```
+
+**注意**: Chrome Web Store 不允许使用端口号通配符 `*`（如 `http://localhost:*/*`），正确写法是不带端口号的格式，会自动匹配所有端口。
 
 **适用场景**: 当API端点和密钥由系统预设且不允许用户修改时，可以限制为本地地址
 
