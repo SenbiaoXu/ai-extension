@@ -1,6 +1,6 @@
 import type { Message, ApiConfig, Tool } from '../types';
 import { DEFAULT_CONFIG } from '../types';
-import { loadConfig } from '../services/storage';
+import { loadConfig, saveConfig } from '../services/storage';
 
 interface ExternalMessage {
   requestId: string;
@@ -52,6 +52,26 @@ class ChatApp {
 
   private async loadConfiguration() {
     this.config = await loadConfig<ApiConfig>(DEFAULT_CONFIG);
+    
+    if (this.config.endpoint && !this.config.model) {
+      await this.autoSelectModel();
+    }
+  }
+
+  private async autoSelectModel() {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'fetch-models',
+        config: { endpoint: this.config.endpoint, apiKey: this.config.apiKey },
+      });
+
+      if (response.success && response.models && response.models.length > 0) {
+        this.config.model = response.models[0].id;
+        await saveConfig(this.config);
+      }
+    } catch (error) {
+      console.error('自动获取模型列表失败:', error);
+    }
   }
 
   private hasValidConfig(): boolean {
