@@ -20,6 +20,11 @@
    - 使用 `chrome.runtime.sendMessage()` 和 `chrome.runtime.onMessage` 进行组件间通信
    - Service Worker 中可以使用 `chrome.runtime.sendMessage()` 向其他组件发送消息
 
+4. **Chrome Web Store 发布限制**
+   - `host_permissions` 中不允许使用端口号通配符 `*`（如 `http://localhost:*/*`）
+   - 正确写法：`http://localhost/*`（会自动匹配所有端口）
+   - 错误写法：`http://localhost:*/*`（发布时会报错）
+
 ### WebSocket 在 Service Worker 中
 
 1. **WebSocket 支持**
