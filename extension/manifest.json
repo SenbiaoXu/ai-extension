@@ -5,8 +5,7 @@
   "description": "连接鸿蒙端侧模型的浏览器扩展，支持AI对话助手功能",
   "permissions": [
     "sidePanel",
-    "storage",
-    "activeTab"
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"

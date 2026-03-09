@@ -401,3 +401,29 @@ setTimeout(() => {
   }
 }, 30000);
 ```
+
+## Chrome Extension 权限优化
+
+### activeTab 权限分析
+
+**问题**: manifest.json 中声明了 `activeTab` 权限，但代码中并未使用
+
+**分析**: `activeTab` 权限用于：
+- 访问当前标签页的 DOM 内容
+- 向当前标签页注入脚本
+- 获取当前标签页的 URL
+- 对当前标签页截图
+
+**实际情况**: 
+- `chrome.action.onClicked` 监听器自动传递 `tab` 参数，无需 `activeTab` 权限
+- Side Panel API 不依赖 `activeTab` 权限
+- 项目中没有任何访问标签页内容的操作
+
+**解决**: 移除 `activeTab` 权限，遵循最小权限原则
+
+### host_permissions 必要性
+
+`host_permissions: ["<all_urls>"]` 必须保留，因为：
+- Service Worker 中 `fetch` 请求需要声明目标域名权限
+- API 端点由用户动态配置（Ollama、OpenAI、自定义服务器等）
+- 无法预先确定所有可能的端点域名
