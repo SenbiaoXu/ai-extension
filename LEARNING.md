@@ -477,3 +477,28 @@ setTimeout(() => {
 3. 自动选择第一个模型并保存配置
 
 **关键原则**: 对于需要动态获取的配置项，应在首次使用时自动初始化，减少用户手动配置步骤
+
+## 配置页面与侧边栏同步
+
+### 问题场景
+
+**问题**: 用户在配置页面修改模型后，侧边栏发送消息时仍使用旧模型
+
+**原因**: 侧边栏的 `config` 只在初始化时加载一次，配置页面保存配置后侧边栏未感知变化
+
+**解决**: 使用 `chrome.storage.onChanged` 监听配置变化：
+1. 配置页面保存配置到 `chrome.storage.local`
+2. 侧边栏监听 `storage.onChanged` 事件
+3. 检测到配置变化后自动更新 `this.config`
+4. 如果模型变化，重新测试连接并更新状态显示
+
+**关键模式**:
+```typescript
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.harmonyos_ai_config) {
+    this.handleConfigChange(changes.harmonyos_ai_config.newValue);
+  }
+});
+```
+
+**关键原则**: 多页面扩展中，各页面需要监听 `storage.onChanged` 事件以保持配置同步

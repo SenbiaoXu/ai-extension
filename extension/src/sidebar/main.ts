@@ -130,6 +130,21 @@ class ChatApp {
         this.handleExternalResponse(message.payload);
       }
     });
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.harmonyos_ai_config) {
+        this.handleConfigChange(changes.harmonyos_ai_config.newValue);
+      }
+    });
+  }
+
+  private async handleConfigChange(newConfig: ApiConfig) {
+    const oldModel = this.config.model;
+    this.config = newConfig;
+    
+    if (oldModel !== newConfig.model) {
+      this.testConnection();
+    }
   }
 
   private async testConnection() {
