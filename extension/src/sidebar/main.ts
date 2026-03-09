@@ -114,7 +114,12 @@ class ChatApp {
 
   private async testConnection() {
     if (!this.config.endpoint) {
-      this.updateConnectionStatus('error');
+      this.updateConnectionStatus('not-configured');
+      return;
+    }
+
+    if (!this.config.model) {
+      this.updateConnectionStatus('no-model');
       return;
     }
     
@@ -134,7 +139,7 @@ class ChatApp {
     }
   }
 
-  private updateConnectionStatus(status: 'connecting' | 'connected' | 'error') {
+  private updateConnectionStatus(status: 'connecting' | 'connected' | 'error' | 'not-configured' | 'no-model') {
     const statusText = this.connectionStatus.querySelector('.status-text')!;
     this.connectionStatus.className = `status-indicator ${status}`;
 
@@ -147,6 +152,12 @@ class ChatApp {
         break;
       case 'error':
         statusText.textContent = '连接失败';
+        break;
+      case 'not-configured':
+        statusText.textContent = '未配置端点';
+        break;
+      case 'no-model':
+        statusText.textContent = '未选择模型';
         break;
     }
   }

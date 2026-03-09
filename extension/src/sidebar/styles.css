@@ -376,6 +376,11 @@ body {
   animation: pulse 1s infinite;
 }
 
+.status-indicator.not-configured .status-dot,
+.status-indicator.no-model .status-dot {
+  background: #f59e0b;
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
