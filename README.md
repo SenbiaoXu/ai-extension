@@ -65,7 +65,7 @@ npm run dev
 ```
 
 服务器启动后会监听:
-- HTTP API: `http://localhost:3000`
+- HTTP API: `http://localhost:11435`
 - WebSocket: `ws://localhost:8765`
 
 ### 2. 加载浏览器扩展
@@ -82,7 +82,7 @@ npm run dev
 使用 curl 或任何 OpenAI SDK:
 
 ```bash
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:11435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "harmonyos-default",
@@ -96,7 +96,7 @@ curl http://localhost:3000/v1/chat/completions \
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  baseURL: 'http://localhost:3000/v1',
+  baseURL: 'http://localhost:11435/v1',
   apiKey: 'dummy',
 });
 

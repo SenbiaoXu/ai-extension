@@ -45,7 +45,7 @@ npm start
 ### 获取模型列表
 
 ```bash
-curl http://localhost:3000/v1/models
+curl http://localhost:11435/v1/models
 ```
 
 响应：
@@ -66,7 +66,7 @@ curl http://localhost:3000/v1/models
 ### 对话补全 (非流式)
 
 ```bash
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:11435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "harmonyos-default",
@@ -99,7 +99,7 @@ curl http://localhost:3000/v1/chat/completions \
 ### 对话补全 (流式)
 
 ```bash
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:11435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "harmonyos-default",
