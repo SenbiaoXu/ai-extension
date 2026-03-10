@@ -502,3 +502,41 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 ```
 
 **关键原则**: 多页面扩展中，各页面需要监听 `storage.onChanged` 事件以保持配置同步
+
+## NPM 包开发
+
+### CLI 命令实现
+
+**问题**: 如何将 Node.js 项目改造为可全局安装的 npm 包，并提供命令行工具
+
+**解决**: 
+1. 在 `package.json` 中配置 `bin` 字段指向 CLI 入口文件
+2. CLI 入口文件必须以 `#!/usr/bin/env node` 开头
+3. 导出主要功能函数供编程方式使用
+
+**关键配置**:
+```json
+{
+  "name": "@scope/package-name",
+  "bin": {
+    "command-name": "./dist/bin/cli.js"
+  },
+  "files": ["dist", "README.md"],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts"
+}
+```
+
+**CLI 入口文件模式**:
+```typescript
+#!/usr/bin/env node
+import { startServer } from '../index.js';
+startServer();
+```
+
+### TypeScript npm 包最佳实践
+
+1. **导出函数而非自动执行**: 将服务器启动逻辑封装到导出函数中，支持编程方式调用
+2. **类型声明**: 设置 `"declaration": true` 生成 `.d.ts` 文件
+3. **模块输出**: 使用 `"module": "ESNext"` 保持 ES 模块兼容性
+4. **files 字段**: 明确指定发布时包含的文件，避免发布不必要的文件

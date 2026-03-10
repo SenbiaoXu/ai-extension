@@ -1,14 +1,32 @@
 {
-  "name": "harmonyos-ai-server",
+  "name": "@hh-agent/local-model",
   "version": "1.0.0",
   "description": "鸿蒙AI助手本地服务器 - WebSocket中转站",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "hh-local-start": "./dist/bin/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "harmonyos",
+    "ai",
+    "websocket",
+    "openai-compatible",
+    "local-model"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
     "ws": "^8.16.0"
   },
@@ -17,5 +35,8 @@
     "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -1,6 +1,6 @@
-# 鸿蒙AI助手 - 大模型接口中转站
+# @hh-agent/local-model
 
-提供 OpenAI 兼容的 HTTP API 接口，通过 WebSocket 与浏览器扩展通信，调用鸿蒙端侧 AI 模型。
+鸿蒙AI助手本地服务器 - 提供 OpenAI 兼容的 HTTP API 接口，通过 WebSocket 与浏览器扩展通信，调用鸿蒙端侧 AI 模型。
 
 ## 功能
 
@@ -20,24 +20,43 @@
 ## 安装
 
 ```bash
-npm install
+# 全局安装
+npm install -g @hh-agent/local-model
+
+# 或作为项目依赖
+npm install @hh-agent/local-model
 ```
 
-## 运行
+## 使用
+
+### 命令行启动
 
 ```bash
-# 开发模式
-npm run dev
+# 全局安装后直接运行
+hh-local-start
 
-# 生产模式
-npm run build
-npm start
+# 或通过 npx 运行
+npx @hh-agent/local-model hh-local-start
 ```
 
-## 端口配置
+### 编程方式使用
 
-环境变量：
-- `HTTP_PORT`: HTTP API 端口，默认 `3000`
+```javascript
+import { startServer } from '@hh-agent/local-model';
+
+// 使用默认端口启动
+startServer();
+
+// 或指定端口
+startServer({
+  httpPort: 11435,
+  wsPort: 8765
+});
+```
+
+### 环境变量配置
+
+- `HTTP_PORT`: HTTP API 端口，默认 `11435`
 - `WS_PORT`: WebSocket 端口，默认 `8765`
 
 ## OpenAI 兼容接口
